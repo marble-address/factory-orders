@@ -3,7 +3,6 @@
   "short_name": "أوردرات المصنع",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#065A36",
