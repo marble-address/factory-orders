@@ -2,91 +2,18 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<title>أوردرات المصنع – النسخة المتطورة</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#065A36">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="المصنع الجديد">
-<link rel="apple-touch-icon" href="../apple-touch-icon.png">
-<link rel="icon" type="image/png" href="../icon-192.png">
-<link rel="manifest" href="manifest.json">
-<style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #065A36; overflow: hidden; }
-  body { font-family: Arial, sans-serif; }
-  #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #F5F1E8;
-         padding-top: env(safe-area-inset-top); box-sizing: border-box; opacity: 0; transition: opacity .35s; }
-  #app.ready { opacity: 1; }
-  #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
-            justify-content: center; gap: 26px; background: linear-gradient(135deg,#03311F,#065A36 60%,#0A6B42); color: #fff; transition: opacity .35s; z-index: 2; }
-  #splash img { width: min(62vw, 300px); }
-  #splash .t { font-size: 17px; letter-spacing: .5px; opacity: .9; }
-  #splash .bar { width: 150px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; }
-  #splash .bar i { display: block; width: 40%; height: 100%; background: #B59433; border-radius: 4px; animation: mv 1.1s ease-in-out infinite; }
-  @keyframes mv { 0% { transform: translateX(160%); } 100% { transform: translateX(-260%); } }
-  #splash.gone { opacity: 0; pointer-events: none; }
-  #retry { display: none; margin-top: 6px; background: #B59433; color: #fff; border: 0; border-radius: 10px;
-           padding: 10px 22px; font: inherit; font-size: 15px; }
-</style>
+<title>أوردرات المصنع – عنوان الرخام</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0;height:100%;background:#065A36}</style>
 </head>
 <body>
-<div id="splash">
-  <img src="../logo-white.png" alt="عنوان الرخام">
-  <div class="t">منظومة أوردرات المصنع</div>
-  <div class="bar"><i></i></div>
-  <button id="retry" onclick="location.reload()">إعادة المحاولة</button>
-</div>
-<iframe id="app" title="أوردرات المصنع" allow="camera; clipboard-write; fullscreen"></iframe>
 <script>
-  var EXEC = 'https://script.google.com/macros/s/AKfycbwWacaswzd9sLyY3RgMxu2_mH4hBqzTUxOK06f-swOp1TtJJm0Z_PS4X4KMYMyceRzg/exec';
-  var KEY = 'ma_factory_orders_v2_k';
-  var q = new URLSearchParams(location.search);
-  var k = q.get('k') || '';
-  try {
-    if (k) localStorage.setItem(KEY, k);
-    else k = localStorage.getItem(KEY) || '';
-  } catch (e) {}
-  var frame = document.getElementById('app');
-  var splash = document.getElementById('splash');
-  frame.addEventListener('load', function () {
-    frame.classList.add('ready');
-    setTimeout(function () { splash.classList.add('gone'); }, 150);
-  });
-  setTimeout(function () {
-    if (!frame.classList.contains('ready')) document.getElementById('retry').style.display = 'inline-block';
-  }, 20000);
-  frame.src = EXEC + (k ? '?k=' + encodeURIComponent(k) : '');
-</script>
-<script>
-  /* ---------- مشاركة كارت حالة الطلب (حفظ أو مشاركة الصورة) ---------- */
-  (function () {
-    var css = document.createElement('style');
-    css.textContent = '#shw{position:fixed;inset:0;z-index:9;background:rgba(10,20,14,.88);display:none;flex-direction:column;align-items:center;justify-content:center;padding:16px;font-family:Arial,sans-serif}#shw.on{display:flex}#shw img{max-width:100%;max-height:68vh;border-radius:12px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}#shw button{border:0;border-radius:12px;padding:13px 22px;font:inherit;font-size:15px;width:min(100%,400px);margin-top:12px}#shw .s{background:#0B7A4B;color:#fff;font-weight:bold}#shw .x{background:rgba(255,255,255,.16);color:#fff}';
-    document.head.appendChild(css);
-    var w = document.createElement('div'); w.id = 'shw';
-    w.innerHTML = '<img alt=""><button class="s">حفظ أو مشاركة الصورة</button><button class="x">إغلاق</button>';
-    document.body.appendChild(w);
-    var file = null, url = '';
-    function close() { w.classList.remove('on'); file = null; url = ''; }
-    function show() { w.querySelector('img').src = url; w.classList.add('on'); }
-    function dl() { var a = document.createElement('a'); a.href = url; a.download = file ? file.name : 'order.png'; document.body.appendChild(a); a.click(); a.remove(); }
-    function share() {
-      if (!file) return;
-      if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).then(close).catch(function (e) { if (!e || e.name !== 'AbortError') dl(); });
-      else dl();
-    }
-    w.querySelector('.s').onclick = share; w.querySelector('.x').onclick = close;
-    window.addEventListener('message', function (e) {
-      var d = e.data || {}; if (d.ma !== 'share' || !d.img) return;
-      url = d.img;
-      fetch(d.img).then(function (r) { return r.blob(); }).then(function (b) {
-        file = new File([b], d.name || 'order.png', { type: 'image/png' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).then(close).catch(function (err) { if (!err || err.name !== 'AbortError') show(); });
-        else show();
-      }).catch(show);
-    });
-  })();
+  // الرابط ده قديم: بيحوّل على الرابط الأساسي للتطبيق بنفس الكود
+  var q = new URLSearchParams(location.search), k = q.get('k') || '';
+  try { if (!k) k = localStorage.getItem('ma_factory_orders_v2_k') || ''; } catch (e) {}
+  if (k) q.set('k', k);
+  var s = q.toString();
+  location.replace('../' + (s ? '?' + s : ''));
 </script>
 </body>
 </html>
