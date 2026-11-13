@@ -62,6 +62,61 @@
     if (!frame.classList.contains('ready')) document.getElementById('retry').style.display = 'inline-block';
   }, 20000);
   frame.src = EXEC + (k ? '?k=' + encodeURIComponent(k) : '');
+  /* ---------- إشعارات الموبايل (Firebase) ---------- */
+  (function () {
+    if (FIXED_CODE || !k) return;   // شاشة التلفزيون مالهاش إشعارات
+    var VAPID = 'BOMY-eQVTO9gtVSLuacCylROsY47hZqBeiMRxD94UwYVAYiWxJl-eN5fOzZMbUFjDU5kdqp9LdjtbRX7eRALf30';
+    var FB = { apiKey: 'AIzaSyDx3sNMVlyFrqDurwOEQEPxpadc-JmUA_Q', authDomain: 'marble-factory-orders.firebaseapp.com', projectId: 'marble-factory-orders',
+               storageBucket: 'marble-factory-orders.firebasestorage.app', messagingSenderId: '924003405893', appId: '1:924003405893:web:264813354c6903aab5132c' };
+    var openO = q.get('o') || '', appWin = null, token = '', swReg = null, messaging = null;
+    var supported = ('serviceWorker' in navigator) && ('Notification' in window) && ('PushManager' in window);
+    var css = document.createElement('style');
+    css.textContent = '#pbar{position:fixed;left:10px;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;display:none;background:#E2EEF4;color:#2F6F8F;border-radius:16px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:14px;line-height:1.5;font-family:Arial,sans-serif}#pbar b{display:block;font-size:15px;margin-bottom:2px}#pbar .r{display:flex;gap:8px;margin-top:9px}#pbar button{border:1px solid #2F6F8F;background:#fff;color:#2F6F8F;border-radius:10px;padding:8px 12px;font:inherit;font-size:14px}#pbar button.p{flex:1;background:#2F6F8F;color:#fff}';
+    document.head.appendChild(css);
+    var bar = document.createElement('div'); bar.id = 'pbar';
+    bar.innerHTML = '<b>🔔 خلّي الطلبات توصلك على الشاشة</b><span id="ptxt">فعّل الإشعارات علشان يوصلك كل جديد حتى والأبليكيشن مقفول.</span><div class="r"><button class="p" id="pon">فعّل الإشعارات</button><button id="plater">بعدين</button></div>';
+    document.body.appendChild(bar);
+    function tell(msg) { if (appWin) try { appWin.postMessage(msg, '*'); } catch (e) {} }
+    function sendToken() { if (token) tell({ ma: 'token', token: token, ua: navigator.userAgent }); }
+    function goOrder(w) { if (!w) return; if (appWin) tell({ ma: 'open', o: w }); else openO = w; }
+    function showBar(txt) { if (txt) document.getElementById('ptxt').textContent = txt; bar.style.display = 'block'; }
+    function hideBar() { bar.style.display = 'none'; }
+    window.addEventListener('message', function (e) {
+      var d = e.data || {};
+      if (d.ma === 'hello') { appWin = e.source; sendToken(); if (openO) { tell({ ma: 'open', o: openO }); openO = ''; } }
+    });
+    document.getElementById('plater').onclick = function () { hideBar(); try { localStorage.setItem('ma_push_later', Date.now()); } catch (e) {} };
+    if (!supported) {
+      if (/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone) setTimeout(function () { showBar('علشان الإشعارات تشتغل على الآيفون: افتح لينكك من Safari، ودوس مشاركة ⬆️، وبعدين «إضافة إلى الشاشة الرئيسية»، وافتح من الأيقونة.'); document.getElementById('pon').style.display = 'none'; }, 3000);
+      return;
+    }
+    function load(src) { return new Promise(function (res, rej) { var s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+    function getTok() { return messaging.getToken({ vapidKey: VAPID, serviceWorkerRegistration: swReg }).then(function (t) { if (t) { token = t; sendToken(); } return t; }); }
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      var d = e.data || {};
+      if (d.maOpen) return goOrder(d.maOpen);
+      if (d.messageType === 'notification-clicked') goOrder((d.data && d.data.wid) || '');
+    });
+    load('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js')
+      .then(function () { return load('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js'); })
+      .then(function () {
+        firebase.initializeApp(FB);
+        messaging = firebase.messaging();
+        messaging.onMessage(function (p) { var n = (p && p.notification) || {}; tell({ ma: 'push', title: n.title || '', body: n.body || '' }); });
+        return navigator.serviceWorker.register('firebase-messaging-sw.js', { scope: './' });
+      })
+      .then(function (reg) {
+        swReg = reg;
+        if (Notification.permission === 'granted') getTok().catch(function (e) { console.log(e); });
+        else if (Notification.permission !== 'denied') { var later = 0; try { later = +localStorage.getItem('ma_push_later') || 0; } catch (e) {} if (Date.now() - later > 6 * 3600 * 1000) setTimeout(showBar, 2500); }
+      }).catch(function (e) { console.log(e); });
+    document.getElementById('pon').onclick = function () {
+      Notification.requestPermission().then(function (p) {
+        hideBar();
+        if (p === 'granted') getTok().catch(function (e) { showBar('حصلت مشكلة في التفعيل: ' + (e && e.message || e)); });
+      });
+    };
+  })();
 </script>
 </body>
 </html>
