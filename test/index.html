@@ -98,6 +98,12 @@
     });
   };
   document.getElementById('plater').onclick = function () { hideBar(); try { localStorage.setItem('ma_push_later', Date.now()); } catch (e) {} };
+  function goOrder(w) { if (!w) return; if (appWin) tell({ ma: 'open', o: w }); else openO = w; }
+  if (supported) navigator.serviceWorker.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.maOpen) return goOrder(d.maOpen);
+    if (d.messageType === 'notification-clicked') goOrder((d.data && d.data.wid) || '');
+  });
 </script>
 </body>
 </html>
