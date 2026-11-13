@@ -194,7 +194,7 @@
     };
     window.addEventListener('message', function (e) {
       var d = e.data || {}; if (d.ma !== 'rec') return;
-      src = e.source; reset(); $('rcT').textContent = '🎤 فويس لـ ' + (d.to || ''); w.classList.add('on');
+      src = e.source; MAX = Math.min(180, Math.max(30, Number(d.max) || 120)); reset(); $('rcT').textContent = '🎤 فويس لـ ' + (d.to || ''); w.classList.add('on');
     });
   })();
 </script>
