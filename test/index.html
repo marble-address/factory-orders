@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>أوردرات المصنع – تجربة</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#065A36">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="المصنع تجربة">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="icon" type="image/png" href="../icon-192.png">
+<link rel="manifest" href="manifest.json">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #065A36; overflow: hidden; }
+  body { font-family: Arial, sans-serif; }
+  #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #fff;
+         padding-top: env(safe-area-inset-top); box-sizing: border-box; opacity: 0; transition: opacity .35s; }
+  #app.ready { opacity: 1; }
+  #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 26px; background: #065A36; color: #fff; transition: opacity .35s; z-index: 2; }
+  #splash img { width: min(62vw, 300px); }
+  #splash .t { font-size: 17px; letter-spacing: .5px; opacity: .9; }
+  #splash .bar { width: 150px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); overflow: hidden; }
+  #splash .bar i { display: block; width: 40%; height: 100%; background: #B59433; border-radius: 4px; animation: mv 1.1s ease-in-out infinite; }
+  @keyframes mv { 0% { transform: translateX(160%); } 100% { transform: translateX(-260%); } }
+  #splash.gone { opacity: 0; pointer-events: none; }
+  #retry { display: none; margin-top: 6px; background: #B59433; color: #fff; border: 0; border-radius: 10px; padding: 10px 22px; font: inherit; font-size: 15px; }
+  #pbar { position: fixed; left: 10px; right: 10px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 5; display: none;
+          background: #E2EEF4; color: #2F6F8F; border-radius: 16px; padding: 12px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18); font-size: 14px; line-height: 1.5; }
+  #pbar b { display: block; font-size: 15px; margin-bottom: 2px; }
+  #pbar .r { display: flex; gap: 8px; margin-top: 9px; }
+  #pbar button { border: 1px solid #2F6F8F; background: #fff; color: #2F6F8F; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 14px; }
+  #pbar button.p { flex: 1; background: #2F6F8F; color: #fff; }
+  #tbadge { position: fixed; top: calc(4px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 6;
+            background: #B59433; color: #fff; font-size: 11px; padding: 2px 10px; border-radius: 10px; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="splash">
+  <img src="../logo-white.png" alt="عنوان الرخام">
+  <div class="t">منظومة أوردرات المصنع · نسخة تجربة</div>
+  <div class="bar"><i></i></div>
+  <button id="retry" onclick="location.reload()">إعادة المحاولة</button>
+</div>
+<div id="tbadge">🧪 نسخة تجربة</div>
+<iframe id="app" title="أوردرات المصنع" allow="camera; clipboard-write; fullscreen"></iframe>
+<div id="pbar"><b>🔔 خلّي الطلبات توصلك على الشاشة</b><span id="ptxt">فعّل الإشعارات علشان يوصلك كل جديد حتى والأبليكيشن مقفول.</span>
+  <div class="r"><button class="p" id="pon">فعّل الإشعارات</button><button id="plater">بعدين</button></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script>
+  var EXEC = 'https://script.google.com/macros/s/AKfycbwkpKCshsgb53L6liqstVA0pY2xNC3Rdt6bZJb6zaHfOwfJqHK3NEyaAs3-yONdOFJq/exec';
+  var VAPID = 'BOMY-eQVTO9gtVSLuacCylROsY47hZqBeiMRxD94UwYVAYiWxJl-eN5fOzZMbUFjDU5kdqp9LdjtbRX7eRALf30';
+  var FB = { apiKey: 'AIzaSyDx3sNMVlyFrqDurwOEQEPxpadc-JmUA_Q', authDomain: 'marble-factory-orders.firebaseapp.com', projectId: 'marble-factory-orders',
+             storageBucket: 'marble-factory-orders.firebasestorage.app', messagingSenderId: '924003405893', appId: '1:924003405893:web:264813354c6903aab5132c' };
+  var KEY = 'ma_factory_orders_test_k';
+  var q = new URLSearchParams(location.search);
+  var k = q.get('k') || '';
+  var openO = q.get('o') || '';
+  try { if (k) localStorage.setItem(KEY, k); else k = localStorage.getItem(KEY) || ''; } catch (e) {}
+  var frame = document.getElementById('app'), splash = document.getElementById('splash');
+  frame.addEventListener('load', function () { frame.classList.add('ready'); setTimeout(function () { splash.classList.add('gone'); }, 150); });
+  setTimeout(function () { if (!frame.classList.contains('ready')) document.getElementById('retry').style.display = 'inline-block'; }, 20000);
+  frame.src = EXEC + (k ? '?k=' + encodeURIComponent(k) : '');
+  var appWin = null, token = '', swReg = null, messaging = null;
+  var supported = ('serviceWorker' in navigator) && ('Notification' in window) && ('PushManager' in window);
+  function tell(msg) { if (appWin) try { appWin.postMessage(msg, '*'); } catch (e) {} }
+  function sendToken() { if (token) tell({ ma: 'token', token: token, ua: navigator.userAgent }); }
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.ma === 'hello') { appWin = e.source; sendToken(); if (openO) { tell({ ma: 'open', o: openO }); openO = ''; } }
+  });
+  function getTok() {
+    return messaging.getToken({ vapidKey: VAPID, serviceWorkerRegistration: swReg }).then(function (t) { if (t) { token = t; sendToken(); } return t; });
+  }
+  function showBar(txt) { if (txt) document.getElementById('ptxt').textContent = txt; document.getElementById('pbar').style.display = 'block'; }
+  function hideBar() { document.getElementById('pbar').style.display = 'none'; }
+  if (supported && k) {
+    try {
+      firebase.initializeApp(FB);
+      messaging = firebase.messaging();
+      navigator.serviceWorker.register('firebase-messaging-sw.js', { scope: './' }).then(function (reg) {
+        swReg = reg;
+        if (Notification.permission === 'granted') getTok().catch(function (e) { console.log(e); });
+        else if (Notification.permission !== 'denied') { var later = 0; try { later = +localStorage.getItem('ma_push_later') || 0; } catch (e) {} if (Date.now() - later > 6 * 3600 * 1000) setTimeout(function () { showBar(); }, 2500); }
+      });
+      messaging.onMessage(function (p) { var n = (p && p.notification) || {}; tell({ ma: 'push', title: n.title || '', body: n.body || '' }); });
+    } catch (e) { console.log(e); }
+  } else if (!supported && /iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone && k) {
+    setTimeout(function () { showBar('علشان الإشعارات تشتغل على الآيفون: افتح اللينك ده من Safari، ودوس مشاركة ⬆️، وبعدين «إضافة إلى الشاشة الرئيسية»، وافتحه من الأيقونة الجديدة.'); document.getElementById('pon').style.display = 'none'; }, 2500);
+  }
+  document.getElementById('pon').onclick = function () {
+    Notification.requestPermission().then(function (p) {
+      if (p === 'granted') { hideBar(); getTok().catch(function (e) { showBar('حصلت مشكلة في التفعيل: ' + (e && e.message || e)); }); }
+      else { hideBar(); }
+    });
+  };
+  document.getElementById('plater').onclick = function () { hideBar(); try { localStorage.setItem('ma_push_later', Date.now()); } catch (e) {} };
+</script>
+</body>
+</html>
