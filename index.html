@@ -148,5 +148,55 @@
     });
   })();
 </script>
+<script>
+  /* ---------- تسجيل فويس (الرسائل الصوتية) ---------- */
+  (function () {
+    var css = document.createElement('style');
+    css.textContent = '#rcw{position:fixed;inset:0;z-index:10;background:rgba(10,20,14,.88);display:none;align-items:flex-end;justify-content:center;font-family:Arial,sans-serif}#rcw.on{display:flex}#rcw .bx{background:#fff;width:100%;max-width:440px;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));text-align:center;color:#1A1E1B}#rcw .ti{font-size:15px;color:#065A36;margin-bottom:4px}#rcw .su{font-size:12.5px;color:#6C7069;min-height:18px}#rcw .bg{width:92px;height:92px;border-radius:50%;border:0;margin:16px auto 8px;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;background:#C0352B;box-shadow:0 0 0 10px #FCEBE8}#rcw .tm{font-size:22px;color:#C0352B;font-variant-numeric:tabular-nums}#rcw audio{width:100%;margin-top:10px}#rcw .rw{display:flex;gap:8px;margin-top:14px}#rcw .rw button{flex:1;border-radius:12px;padding:12px;font:inherit;font-size:14px;border:1px solid #065A36;background:#fff;color:#065A36}#rcw .rw .sd{background:#065A36;color:#fff}#rcw .rw .sd:disabled{background:#C9CCC6;border-color:#C9CCC6}';
+    document.head.appendChild(css);
+    var w = document.createElement('div'); w.id = 'rcw';
+    w.innerHTML = '<div class="bx"><div class="ti" id="rcT">🎤 فويس</div><div class="su" id="rcS">اضغط الزرار الأحمر وابدأ الكلام</div><button class="bg" id="rcB">🎤</button><div class="tm" id="rcM">0:00</div><audio id="rcA" controls style="display:none"></audio><div class="rw"><button class="sd" id="rcSend" disabled>ابعت</button><button id="rcRe" style="display:none">سجّل تاني</button><button id="rcX">إلغاء</button></div></div>';
+    document.body.appendChild(w);
+    var src = null, rec = null, stream = null, chunks = [], blob = null, t0 = 0, dur = 0, tick = null, MAX = 120;
+    function $(i) { return document.getElementById(i); }
+    function fmt(s) { s = Math.floor(s); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+    function reset() { blob = null; dur = 0; $('rcM').textContent = '0:00'; $('rcA').style.display = 'none'; $('rcA').removeAttribute('src'); $('rcSend').disabled = true; $('rcRe').style.display = 'none'; $('rcB').style.display = 'flex'; $('rcB').textContent = '🎤'; $('rcS').textContent = 'اضغط الزرار الأحمر وابدأ الكلام'; }
+    function stopAll() { try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (e) {} if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; clearInterval(tick); }
+    function close() { stopAll(); rec = null; w.classList.remove('on'); reset(); }
+    function start() {
+      if (!navigator.mediaDevices || !window.MediaRecorder) { $('rcS').textContent = 'الموبايل ده مش بيدعم التسجيل من التطبيق.'; return; }
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+        stream = s; chunks = [];
+        var mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+        rec = mime ? new MediaRecorder(s, { mimeType: mime }) : new MediaRecorder(s);
+        rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = function () {
+          dur = Math.max(1, Math.round((Date.now() - t0) / 1000));
+          blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/mp4' });
+          if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null;
+          $('rcA').src = URL.createObjectURL(blob); $('rcA').style.display = 'block';
+          $('rcB').style.display = 'none'; $('rcRe').style.display = 'block'; $('rcSend').disabled = false;
+          $('rcS').textContent = 'اسمعه لو حابب، وبعدين ابعت'; $('rcM').textContent = fmt(dur);
+        };
+        rec.start(); t0 = Date.now(); $('rcB').textContent = '■'; $('rcS').textContent = 'بيسجّل… اضغط ■ لما تخلّص · أقصى مدة ' + fmt(MAX);
+        tick = setInterval(function () { var s = (Date.now() - t0) / 1000; $('rcM').textContent = fmt(s); if (s >= MAX) stop(); }, 250);
+      }).catch(function () { $('rcS').textContent = 'لازم تسمح للتطبيق باستخدام المايك علشان تسجّل.'; });
+    }
+    function stop() { clearInterval(tick); try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (e) {} }
+    $('rcB').onclick = function () { if (rec && rec.state === 'recording') stop(); else start(); };
+    $('rcRe').onclick = function () { rec = null; reset(); start(); };
+    $('rcX').onclick = close;
+    $('rcSend').onclick = function () {
+      if (!blob || !src) return; $('rcSend').disabled = true; $('rcS').textContent = 'بيتبعت…';
+      var fr = new FileReader();
+      fr.onload = function () { var b64 = String(fr.result).split(',')[1] || ''; try { src.postMessage({ ma: 'recdone', b64: b64, mime: blob.type, dur: dur }, '*'); } catch (e) {} close(); };
+      fr.readAsDataURL(blob);
+    };
+    window.addEventListener('message', function (e) {
+      var d = e.data || {}; if (d.ma !== 'rec') return;
+      src = e.source; reset(); $('rcT').textContent = '🎤 فويس لـ ' + (d.to || ''); w.classList.add('on');
+    });
+  })();
+</script>
 </body>
 </html>
