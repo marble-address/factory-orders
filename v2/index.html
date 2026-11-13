@@ -58,5 +58,35 @@
   }, 20000);
   frame.src = EXEC + (k ? '?k=' + encodeURIComponent(k) : '');
 </script>
+<script>
+  /* ---------- مشاركة كارت حالة الطلب (حفظ أو مشاركة الصورة) ---------- */
+  (function () {
+    var css = document.createElement('style');
+    css.textContent = '#shw{position:fixed;inset:0;z-index:9;background:rgba(10,20,14,.88);display:none;flex-direction:column;align-items:center;justify-content:center;padding:16px;font-family:Arial,sans-serif}#shw.on{display:flex}#shw img{max-width:100%;max-height:68vh;border-radius:12px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}#shw button{border:0;border-radius:12px;padding:13px 22px;font:inherit;font-size:15px;width:min(100%,400px);margin-top:12px}#shw .s{background:#0B7A4B;color:#fff;font-weight:bold}#shw .x{background:rgba(255,255,255,.16);color:#fff}';
+    document.head.appendChild(css);
+    var w = document.createElement('div'); w.id = 'shw';
+    w.innerHTML = '<img alt=""><button class="s">حفظ أو مشاركة الصورة</button><button class="x">إغلاق</button>';
+    document.body.appendChild(w);
+    var file = null, url = '';
+    function close() { w.classList.remove('on'); file = null; url = ''; }
+    function show() { w.querySelector('img').src = url; w.classList.add('on'); }
+    function dl() { var a = document.createElement('a'); a.href = url; a.download = file ? file.name : 'order.png'; document.body.appendChild(a); a.click(); a.remove(); }
+    function share() {
+      if (!file) return;
+      if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).then(close).catch(function (e) { if (!e || e.name !== 'AbortError') dl(); });
+      else dl();
+    }
+    w.querySelector('.s').onclick = share; w.querySelector('.x').onclick = close;
+    window.addEventListener('message', function (e) {
+      var d = e.data || {}; if (d.ma !== 'share' || !d.img) return;
+      url = d.img;
+      fetch(d.img).then(function (r) { return r.blob(); }).then(function (b) {
+        file = new File([b], d.name || 'order.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).then(close).catch(function (err) { if (!err || err.name !== 'AbortError') show(); });
+        else show();
+      }).catch(show);
+    });
+  })();
+</script>
 </body>
 </html>
