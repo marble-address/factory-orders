@@ -74,7 +74,7 @@
     css.textContent = '#pbar{position:fixed;left:10px;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:5;display:none;background:#E2EEF4;color:#2F6F8F;border-radius:16px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:14px;line-height:1.5;font-family:Arial,sans-serif}#pbar b{display:block;font-size:15px;margin-bottom:2px}#pbar .r{display:flex;gap:8px;margin-top:9px}#pbar button{border:1px solid #2F6F8F;background:#fff;color:#2F6F8F;border-radius:10px;padding:8px 12px;font:inherit;font-size:14px}#pbar button.p{flex:1;background:#2F6F8F;color:#fff}';
     document.head.appendChild(css);
     var bar = document.createElement('div'); bar.id = 'pbar';
-    bar.innerHTML = '<b>🔔 خلّي الطلبات توصلك على الشاشة</b><span id="ptxt">فعّل الإشعارات علشان يوصلك كل جديد حتى والأبليكيشن مقفول.</span><div class="r"><button class="p" id="pon">فعّل الإشعارات</button><button id="plater">بعدين</button></div>';
+    bar.innerHTML = '<b>🔔 إشعارات تطبيق المصنع</b><span id="ptxt">تابع طلباتك أول بأول، وذكّر المصنع بتحديد الموعد من داخل الطلب.</span><div class="r"><button class="p" id="pon">فعّل الإشعارات</button><button id="plater">بعدين</button></div>';
     document.body.appendChild(bar);
     function tell(msg) { if (appWin) try { appWin.postMessage(msg, '*'); } catch (e) {} }
     function sendToken() { if (token) tell({ ma: 'token', token: token, ua: navigator.userAgent }); }
