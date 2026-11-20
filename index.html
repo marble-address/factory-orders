@@ -61,7 +61,19 @@
   setTimeout(function () {
     if (!frame.classList.contains('ready')) document.getElementById('retry').style.display = 'inline-block';
   }, 20000);
-  frame.src = EXEC + (k ? '?k=' + encodeURIComponent(k) : '');
+  // الفتح المباشر من السحابة (من غير ما يعدّي على سيرفر جوجل): بيتفعّل للجهاز بعد أول فتحة ناجحة من السحابة
+  var CLOUD = 'https://marble-factory-orders.web.app/c/';
+  var OKKEY = 'ma_cloud_ok_' + k;
+  var direct = false;
+  try { direct = !FIXED_CODE && !!k && k.indexOf('~') < 0 && q.get('classic') !== '1' && localStorage.getItem(OKKEY) === '1'; } catch (e) {}
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.ma === 'cloudok' && d.k === k) { try { localStorage.setItem(OKKEY, '1'); } catch (x) {} }
+    if (d.ma === 'cloudbad' && d.k === k) { try { localStorage.removeItem(OKKEY); } catch (x) {} if (direct) location.reload(); }
+  });
+  frame.src = direct
+    ? CLOUD + '?k=' + encodeURIComponent(k) + (q.get('o') ? '&o=' + encodeURIComponent(q.get('o')) : '')
+    : EXEC + (k ? '?k=' + encodeURIComponent(k) : '') + (q.get('classic') === '1' ? '&classic=1' : '');
   /* ---------- إشعارات الموبايل (Firebase) ---------- */
   (function () {
     if (FIXED_CODE || !k) return;   // شاشة التلفزيون مالهاش إشعارات
