@@ -645,23 +645,28 @@ async function repAct(m){
   const uid=subjectUid(); const cs=(await customersOf(uid)).filter(c=>c.source==='old'); S._cust=cs;
   actBody(m,cs,false);
 }
+const PRIO_RANK={'عالية':0,'متوسطة':1,'عادية':2};
+function prioOf(c){ const m=/أولوية (عالية|متوسطة|عادية)/.exec(c.notes||''); return m?m[1]:''; }
+function prioRank(c){ const p=prioOf(c); return p in PRIO_RANK?PRIO_RANK[p]:3; }
+function pastTotal(c){ const m=/· ([\d,]+) ر\.س/.exec(c.notes||''); return m?+m[1].replace(/,/g,''):0; }
 function actBody(m,cs,admin){
   const f=S.actFilter, q=(S.q||'').trim();
   const contacted=cs.filter(c=>c.actStatus&&c.actStatus!=='جديد').length;
   const visited=cs.filter(c=>c.actStatus==='تمت الزيارة'||c.visitsCount>0).length;
   const interested=cs.filter(c=>c.actStatus==='مهتم').length;
   const pct=cs.length?Math.round(contacted*100/cs.length):0;
-  const groups=[['all','الكل'],['جديد','لم يتم التواصل'],['followup','متابعة'],['زيارة مجدولة','زيارة مجدولة'],['done','تم'],['closed','مغلق']];
-  const inG=(c,g)=> g==='all'||(g==='followup'&&['لم يرد','تم التواصل','مهتم'].includes(c.actStatus))||(g==='done'&&c.actStatus==='تمت الزيارة')||(g==='closed'&&['غير مهتم','رقم غير صحيح'].includes(c.actStatus))||c.actStatus===g;
+  const groups=[['all','الكل'],['high','أولوية عالية'],['جديد','لم يتم التواصل'],['followup','متابعة'],['زيارة مجدولة','زيارة مجدولة'],['done','تم'],['closed','مغلق']];
+  const inG=(c,g)=> g==='all'||(g==='high'&&prioOf(c)==='عالية')||(g==='followup'&&['لم يرد','تم التواصل','مهتم'].includes(c.actStatus))||(g==='done'&&c.actStatus==='تمت الزيارة')||(g==='closed'&&['غير مهتم','رقم غير صحيح'].includes(c.actStatus))||c.actStatus===g;
   let list=cs.filter(c=>inG(c,f)&&(!admin||S.actRep==='all'||c.ownerUid===S.actRep));
   if(q) list=list.filter(c=>(c.name+' '+(c.phone||'')+' '+(c.code||'')).includes(q));
-  list.sort((a,b)=>{ const pa=a.nextVisitAt||'9', pb=b.nextVisitAt||'9'; return pa<pb?-1:pa>pb?1:(a.name>b.name?1:-1); });
+  const td=today(); const dueK=c=>c.nextVisitAt&&c.nextVisitAt<=td?0:1;
+  list.sort((a,b)=> dueK(a)-dueK(b) || prioRank(a)-prioRank(b) || pastTotal(b)-pastTotal(a) || (a.nextVisitAt||'9').localeCompare(b.nextVisitAt||'9') || a.name.localeCompare(b.name,'ar'));
   const C=2*Math.PI*22;
   m.innerHTML=`${admin?'':`<div class="card prog"><svg class="ring" viewBox="0 0 56 56"><circle cx="28" cy="28" r="22" fill="none" stroke="#EFEBE1" stroke-width="6"/><circle cx="28" cy="28" r="22" fill="none" stroke="var(--gold)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${C*pct/100} ${C}" transform="rotate(-90 28 28)"/><text x="28" y="32" text-anchor="middle" font-size="12" fill="var(--ink)" font-family="Arial">${pct}%</text></svg>
     <div class="grow"><b style="font-weight:500">تنشيط الداتا القديمة</b><div class="small muted">اتواصلت مع ${contacted} من ${cs.length} · زرت ${visited} · مهتم ${interested}</div></div></div>`}
   <div class="srch" style="margin-top:12px"><span>${ic('search',18)}</span><input class="inp" id="q" placeholder="ابحث بالاسم أو الكود أو الجوال" value="${esc(q)}"></div>
   <div class="chips" style="margin-top:10px">${groups.map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="actF" data-v="${k}">${l} <span style="opacity:.6">${cs.filter(c=>inG(c,k)&&(!admin||S.actRep==='all'||c.ownerUid===S.actRep)).length}</span></button>`).join('')}</div>
-  <div style="margin-top:8px">${list.length? list.slice(0,200).map(c=>actItem(c,admin)).join('') : `<div class="card empty">${ic('bolt',30)}${cs.length?'مفيش عملاء في القائمة دي':'لسه مفيش داتا قديمة متوزعة عليك. المدير هيرفعها من لوحته'}</div>`}</div>`;
+  <div style="margin-top:8px">${list.length? list.slice(0,400).map(c=>actItem(c,admin)).join('') : `<div class="card empty">${ic('bolt',30)}${cs.length?'مفيش عملاء في القائمة دي':'لسه مفيش داتا قديمة متوزعة عليك. المدير هيرفعها من لوحته'}</div>`}</div>`;
 }
 function actItem(c,admin){
   const st=ACT_STATUS[c.actStatus||'جديد']; const due=c.nextVisitAt&&c.nextVisitAt<=today(); const ph=normPhone(c.phone);
@@ -669,7 +674,7 @@ function actItem(c,admin){
     <button class="row" data-act="openCust" data-id="${c.id}" style="width:100%;text-align:start">
       <div class="grow"><b style="font-weight:500" class="ell">${esc(c.name)}</b>
       <div class="meta small muted">${c.code?esc(c.code)+' · ':''}${c.phone?`<span dir="ltr">${esc(c.phone)}</span>`:'بدون رقم'}${admin?' · '+esc((userById(c.ownerUid)||{}).name||'غير موزع'):''}</div></div>
-      <span class="badge ${st[1]}">${st[0]}</span></button>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${prioOf(c)==='عالية'?'<span class="badge gold">★ أولوية عالية</span>':''}<span class="badge ${st[1]}">${st[0]}</span></div></button>
     ${c.nextVisitAt||c.lastContactAt?`<div class="small muted" style="margin-top:6px">${c.nextVisitAt?`<span style="color:${due?'var(--red)':'var(--blue)'}">${ic('cal',13,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}${c.lastContactAt?' · آخر تواصل '+ago(c.lastContactAt):''}</div>`:''}
     ${c.contactNote?`<div class="small" style="margin-top:4px;color:#555">“${esc(c.contactNote)}”</div>`:''}
     ${S.viewAs||admin?'':`<div class="btns" style="margin-top:10px">
