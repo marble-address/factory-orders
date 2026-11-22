@@ -472,6 +472,8 @@ const reps = () => S.users.filter(u=>u.role==='rep').sort((a,b)=>REPS_SEED.findI
 const userById = id => S.users.find(u=>u.id===id);
 const repColor = id => { const i=reps().findIndex(r=>r.id===id); return REP_COLORS[(i<0?7:i)%REP_COLORS.length]; };
 const subjectUid = () => S.viewAs ? S.viewAs.id : S.me.id;
+const actor = () => S.viewAs || S.me;   // اللي بيتسجل باسمه (المندوب لو المدير فاتح شاشته)
+const byAdminTag = () => S.viewAs ? S.me.name : '';
 
 /* ================= التشغيل ================= */
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
@@ -528,9 +530,9 @@ function render(){
   <header class="hdr"><img src="${LOGO}" alt=""><div class="tt"><b>الزيارات الميدانية</b><small>${isAdmin()&&!S.viewAs?'لوحة مدير المشاريع':'عنوان الرخام'}</small></div>
     ${isAdmin()&&!S.viewAs?`<button class="ib" data-act="newVisit" title="تسجيل زيارة">${ic('plus',20)}</button>`:''}
     <button class="av" data-act="account">${esc(initials(S.me.name))}</button></header>
-  ${S.viewAs?`<div class="viewas">${ic('eye',18)}<span>أنت بتشوف شاشة <b>${esc(S.viewAs.name)}</b></span><button data-act="exitView">رجوع للوحتي</button></div>`:''}
+  ${S.viewAs?`<div class="viewas">${ic('eye',18)}<span>إنت شغال على شاشة <b>${esc(S.viewAs.name)}</b> · أي حاجة تسجلها هتتسجل باسمه</span><button data-act="exitView">رجوع للوحتي</button></div>`:''}
   <main id="main"><div class="loading"><span class="spin"></span></div></main>
-  <nav class="nav">${tabs.map(t=> t[0]==='fab' ? `<button class="fab" data-act="newVisit" ${S.viewAs?'disabled style="opacity:.5"':''}>${ic('plus',26,2.2)}</button>`
+  <nav class="nav">${tabs.map(t=> t[0]==='fab' ? `<button class="fab" data-act="newVisit">${ic('plus',26,2.2)}</button>`
      : `<button class="${S.tab===t[0]?'on':''}" data-tab="${t[0]}">${ic(t[2],22)}<span>${t[1]}</span></button>`).join('')}</nav>`;
   renderTab();
 }
@@ -574,7 +576,7 @@ function visitItem(v,showRep){
   return `<button class="it" data-act="openVisit" data-id="${v.id}">
     <div class="th" style="${v.thumb?`background-image:url('${v.thumb}')`:''}">${v.thumb?'':ic('cam',22)}</div>
     <div class="grow"><b class="ell">${esc(v.customerName)}</b>
-      <div class="meta ell">${showRep?`<span style="color:${repColor(v.repUid)}">●</span> ${esc(v.repName)} · `:''}${fWhen(v.createdAt)}</div>
+      <div class="meta ell">${showRep?`<span style="color:${repColor(v.repUid)}">●</span> ${esc(v.repName)} · `:''}${fWhen(v.createdAt)}${v.byAdmin?' · سجّلها '+esc(v.byAdmin):''}</div>
       <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">${v.result?`<span class="badge ${rb?rb[1]:''}">${esc(v.result)}</span>`:''}${v.flagged?`<span class="badge red">${ic('flag',12,2)} ملاحظة</span>`:''}${v.type==='site'?'<span class="badge grey">موقع مشروع</span>':''}</div>
     </div></button>`;
 }
@@ -606,7 +608,7 @@ async function repHome(m){
     <div class="st gold"><b>${vWeek}</b><span>زيارات الأسبوع</span></div>
     <div class="st ${due.length?'warn':''}"><b>${due.length}</b><span>متابعات مستحقة</span></div>
   </div>
-  ${S.viewAs?'':`<button class="cta" data-act="newVisit"><div class="ic">${ic('pin',26)}</div><div class="grow"><b>سجّل زيارة جديدة</b><small>صورة + موقعك بيتسجل تلقائي</small></div>${ic('plus',22)}</button>`}
+  ${`<button class="cta" data-act="newVisit"><div class="ic">${ic('pin',26)}</div><div class="grow"><b>سجّل زيارة جديدة</b><small>صورة + موقعك بيتسجل تلقائي</small></div>${ic('plus',22)}</button>`}
   <div class="sec"><h3>متابعات مستحقة</h3>${due.length?`<span class="cnt">${due.length}</span>`:''}</div>
   ${due.length? due.slice(0,8).map(c=>custItem(c)).join('') : `<div class="card empty" style="padding:18px">${ic('check',28)}مفيش متابعات متأخرة. شغل نضيف</div>`}
   ${oldNew?`<button class="it" data-tab="act" style="margin-top:12px;background:var(--gold3);border-color:var(--gold2)"><div class="avt" style="background:var(--gold)">${ic('bolt',20)}</div><div class="grow"><b>تنشيط الداتا القديمة</b><span class="meta">عندك ${oldNew} عميل لسه ما اتواصلتش معاهم</span></div></button>`:''}
@@ -677,7 +679,7 @@ function actItem(c,admin){
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${prioOf(c)==='عالية'?'<span class="badge gold">★ أولوية عالية</span>':''}<span class="badge ${st[1]}">${st[0]}</span></div></button>
     ${c.nextVisitAt||c.lastContactAt?`<div class="small muted" style="margin-top:6px">${c.nextVisitAt?`<span style="color:${due?'var(--red)':'var(--blue)'}">${ic('cal',13,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}${c.lastContactAt?' · آخر تواصل '+ago(c.lastContactAt):''}</div>`:''}
     ${c.contactNote?`<div class="small" style="margin-top:4px;color:#555">“${esc(c.contactNote)}”</div>`:''}
-    ${S.viewAs||admin?'':`<div class="btns" style="margin-top:10px">
+    ${admin?'':`<div class="btns" style="margin-top:10px">
       ${ph?`<a class="btn sm sec2" href="tel:+${ph}" data-act="callLog" data-id="${c.id}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener">${ic('wa',16)} واتساب</a>`:''}
       <button class="btn sm" data-act="contact" data-id="${c.id}">${ic('check',16)} النتيجة</button></div>`}
   </div>`;
@@ -841,9 +843,9 @@ function closeSheet(now){ const ov=$('#ov'); if(!ov) return; document.body.style
 
 /* ---- تسجيل زيارة ---- */
 async function openNewVisit(prefillId){
-  const uid=S.me.id;
-  const cs=S._custMine && S._custMineAt>Date.now()-60000 ? S._custMine : await customersOf(uid);
-  S._custMine=cs; S._custMineAt=Date.now();
+  const uid=actor().id;
+  const cs=S._custMine && S._custMineUid===uid && S._custMineAt>Date.now()-60000 ? S._custMine : await customersOf(uid);
+  S._custMine=cs; S._custMineAt=Date.now(); S._custMineUid=uid;
   const V=S.nv={mode: prefillId?'existing':'new', cust: prefillId? cs.find(c=>c.id===prefillId)||null : null, type:'client', category:'', materials:[], result:'', next:'', loc:null, locErr:'', photo:null, thumb:null, photoTime:null};
   if(V.cust&&V.cust.type) V.type=V.cust.type;
   sheet('تسجيل زيارة جديدة',`
@@ -936,16 +938,16 @@ async function saveVisit(){
     if(V.photoTime && Date.now()-V.photoTime>OLD_PHOTO_MIN*6e4) flags.push('الصورة متصورة قبل التسجيل بـ '+fDur(Date.now()-V.photoTime));
     if(V.mode==='new'){
       const phone=($('#nvPhone').value||'').trim(), cat=$('#nvCat').value;
-      const c={name,phone,category:cat,type:V.type,lat:V.loc.lat,lng:V.loc.lng,ownerUid:S.me.id,source:'field',createdAt:'__SV__',visitsCount:0};
+      const c={name,phone,category:cat,type:V.type,lat:V.loc.lat,lng:V.loc.lng,ownerUid:actor().id,source:'field',createdAt:'__SV__',visitsCount:0};
       const r=await API.add('customers',c); cust={...c,id:r.id,createdAt:Date.now()};
       S._custMine.push(cust);
     }
-    const vid=uid12()+S.me.id.slice(0,4);
-    const visit={repUid:S.me.id,repName:S.me.name,customerId:cust.id,customerName:cust.name,phone:cust.phone||'',category:cust.category||'',type:V.type,
+    const vid=uid12()+actor().id.slice(0,4);
+    const visit={repUid:actor().id,repName:actor().name,byAdmin:byAdminTag(),customerId:cust.id,customerName:cust.name,phone:cust.phone||'',category:cust.category||'',type:V.type,
       materials:mats,area,result:V.result,notes,nextVisitDate:V.next||'',lat:V.loc.lat,lng:V.loc.lng,acc:V.loc.acc,distanceM:dM,flagged:flags.length>0,flags,
       thumb:V.thumb,hasPhoto:true,photoTakenAt:V.photoTime||null,clientTime:Date.now(),createdAt:'__SV__'};
     const r1=await API.add('visits',visit,vid);
-    API.add('photos',{repUid:S.me.id,data:V.photo,createdAt:'__SV__'},vid);
+    API.add('photos',{repUid:actor().id,data:V.photo,createdAt:'__SV__'},vid);
     const patch={lastVisitAt:Date.now(),lastResult:V.result,nextVisitAt:V.next||'',visitsCount:(cust.visitsCount||0)+1,type:V.type};
     if(!cust.lat){ patch.lat=V.loc.lat; patch.lng=V.loc.lng; }
     if(cust.source==='old') patch.actStatus= V.result==='غير مهتم'?'غير مهتم': V.result==='مهتم'||V.result==='طلب عرض سعر'||V.result==='تم البيع'?'مهتم':'تمت الزيارة';
@@ -991,7 +993,7 @@ async function openCust(id){
   let contacts=[]; try{ contacts=(await API.query('contacts',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]]))).sort((a,b)=>b.createdAt-a.createdAt); }catch(e){}
   S._vis=(S._vis||[]).concat(vs);
   const ph=normPhone(c.phone); const st=ACT_STATUS[c.actStatus];
-  const mine=!S.viewAs && (c.ownerUid===S.me.id);
+  const mine=(c.ownerUid===actor().id);
   sheet(esc(c.name),`
     <div class="card" style="margin-top:12px"><dl class="kv">
       ${c.code?`<dt>الكود</dt><dd>${esc(c.code)}</dd>`:''}
@@ -1008,7 +1010,7 @@ async function openCust(id){
     ${isAdmin()&&!S.viewAs?`<div class="fld"><label>نقل العميل لمندوب تاني</label><select class="inp" data-chg="moveCust" data-id="${c.id}">${reps().map(r=>`<option value="${r.id}" ${c.ownerUid===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select></div>`:''}
     <div class="sec"><h3>الزيارات</h3><span class="cnt">${vs.length}</span></div>
     ${vs.length?vs.map(v=>visitItem(v,isAdmin())).join(''):'<div class="card empty" style="padding:16px">لسه مفيش زيارات</div>'}
-    ${contacts.length?`<div class="sec"><h3>سجل التواصل</h3></div><div class="card">${contacts.map(x=>`<div style="padding:6px 0;border-bottom:1px solid #F1EDE3"><span class="badge ${(ACT_STATUS[x.outcome]||[])[1]||''}">${esc(x.outcome)}</span> <span class="small muted">${fWhen(x.createdAt)} · ${esc(x.repName||'')}</span>${x.note?`<div class="small">${esc(x.note)}</div>`:''}</div>`).join('')}</div>`:''}`);
+    ${contacts.length?`<div class="sec"><h3>سجل التواصل</h3></div><div class="card">${contacts.map(x=>`<div style="padding:6px 0;border-bottom:1px solid #F1EDE3"><span class="badge ${(ACT_STATUS[x.outcome]||[])[1]||''}">${esc(x.outcome)}</span> <span class="small muted">${fWhen(x.createdAt)} · ${esc(x.repName||'')}${x.byAdmin?' (سجّلها '+esc(x.byAdmin)+')':''}</span>${x.note?`<div class="small">${esc(x.note)}</div>`:''}</div>`).join('')}</div>`:''}`);
 }
 
 /* ---- نتيجة تواصل (تنشيط) ---- */
@@ -1026,7 +1028,7 @@ async function saveContact(){
   const T=S.ct; if(!T.outcome){ toast('اختار النتيجة'); return; }
   const note=($('#ctNote').value||'').trim();
   const c=(S._cust||[]).find(x=>x.id===T.id);
-  await API.add('contacts',{customerId:T.id,customerName:c.name,repUid:S.me.id,repName:S.me.name,outcome:T.outcome,note,next:T.next||'',createdAt:'__SV__'});
+  await API.add('contacts',{customerId:T.id,customerName:c.name,repUid:actor().id,repName:actor().name,byAdmin:byAdminTag(),outcome:T.outcome,note,next:T.next||'',createdAt:'__SV__'});
   const patch={actStatus:T.outcome,lastContactAt:Date.now(),contactNote:note,nextVisitAt:T.next||(['غير مهتم','رقم غير صحيح'].includes(T.outcome)?'':c.nextVisitAt||'')};
   await API.update('customers',T.id,patch); Object.assign(c,patch);
   closeSheet(); toast('اتسجلت النتيجة'); renderTab();
@@ -1161,7 +1163,7 @@ document.addEventListener('click',async e=>{
     case 'reload': renderTab(); break;
     case 'closeSheet': closeSheet(); break;
     case 'closeSheetRefresh': closeSheet(); renderTab(); break;
-    case 'newVisit': if(S.viewAs) return; openNewVisit(); break;
+    case 'newVisit': openNewVisit(); break;
     case 'visitCust': closeSheet(true); openNewVisit(d.id); break;
     case 'relocate': startLoc(); break;
     case 'nvType': V.type=d.v; t.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===t)); if(V.mode==='new'){ const n=$('#nvName'); if(n) n.placeholder=V.type==='site'?'اسم المشروع / المالك':'اسم العميل أو الشركة'; } break;
