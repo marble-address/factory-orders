@@ -90,6 +90,26 @@ main{padding:14px 14px calc(var(--safe-b) + 100px);max-width:760px;margin:0 auto
 .badge.red{background:var(--red2);color:var(--red)}
 .badge.amber{background:var(--amber2);color:var(--amber)}
 .badge.blue{background:var(--blue2);color:var(--blue)}
+.hdr .bell{position:relative}
+.hdr .bell .n{position:absolute;top:-4px;inset-inline-end:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#E0483A;color:#fff;font-size:11px;line-height:18px;text-align:center}
+.hdr .onl{display:flex;align-items:center;gap:6px;height:36px;padding:0 10px;border-radius:12px;background:rgba(255,255,255,.1);color:#fff;font-size:13px}
+.hdr .onl i{width:8px;height:8px;border-radius:50%;background:#9DB5A8}
+.hdr .onl.live i{background:#4ADE80;box-shadow:0 0 0 3px rgba(74,222,128,.25)}
+.dot{width:10px;height:10px;border-radius:50%;background:#D6D1C4;flex:none}
+.dot.on{background:#22A55A;box-shadow:0 0 0 3px rgba(34,165,90,.18)}
+.ntf.unread{border-color:var(--gold2);background:var(--gold3)}
+.ntf .meta{display:block}
+.cm{background:#fff;border:1px solid #EAE5D8;border-radius:14px;padding:8px 11px;margin:6px 0;max-width:88%}
+.cm.adm{background:var(--gold3);border-color:var(--gold2)}
+.cm.me{margin-inline-start:auto}
+.cmh{font-size:12px;color:#6B6658;display:flex;gap:6px;align-items:baseline}
+.cmh b{font-weight:500;color:var(--ink)}
+.cmh span{margin-inline-start:auto;font-size:11px}
+.cmt{white-space:pre-wrap;line-height:1.7;margin-top:2px}
+.cmbox{display:flex;gap:8px;align-items:flex-end;margin-top:8px}
+.cmbox textarea{min-height:44px;height:44px;resize:none}
+.task.done{opacity:.75}
+.lnk2{color:var(--g);text-decoration:underline;font:inherit;padding:0}
 .badge.gold{background:var(--gold2);color:#8A6E1E}
 .badge.grey{background:#EEECE6;color:#6B6658}
 
@@ -334,7 +354,10 @@ const I = {
   refresh:'<path d="M20 11A8 8 0 0 0 5.6 6.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.4 4.4L20 16M20 20v-4h-4"/>',
   building:'<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M2 21h20M8 8h3M8 12h3M8 16h3"/>',
   copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
-  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'
+  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  bell:'<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+  pinpaper:'<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 16v5"/>'
 };
 const ic = (n,s=20,w=1.7) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
 
@@ -392,7 +415,8 @@ function liveAPI(){
     async add(col,data,id){ const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); return {id:ref.id,saved}; },
     async update(col,id,patch){ const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); return {saved}; },
     async batchAdd(col,rows){ for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } },
-    async remove(col,id){ await fs.collection(col).doc(id).delete(); }
+    async remove(col,id){ await fs.collection(col).doc(id).delete(); },
+    async addToken(uid,tok){ await fs.collection('users').doc(uid).update({fcmTokens:firebase.firestore.FieldValue.arrayUnion(tok),notifOn:true,notifAt:Date.now()}); }
   };
 }
 
@@ -417,6 +441,7 @@ function demoAPI(){
     async update(col,id,patch){ Object.assign(db[col][id],fix(patch)); save(); return {saved:true}; },
     async batchAdd(col,rows){ rows.forEach(r=>{ (db[col]=db[col]||{})[uid12()]=fix(r); }); save(); },
     async remove(col,id){ delete db[col][id]; save(); },
+    async addToken(){ },
     reset(){ try{ localStorage.removeItem(KEY); }catch(e){} location.reload(); },
     _db:()=>db
   };
@@ -495,7 +520,7 @@ async function boot(){
       if(!me || me.active===false){ renderLogin('الحساب ده مش مفعّل. كلّم مدير المشاريع.'); await API.logout(); return; }
       S.me=me; S.tab='home'; S.viewAs=null;
       S.users = isAdmin() ? await API.query('users') : [me];
-      render();
+      render(); startHeartbeat(); silentPushRefresh(); handleDeepLink();
     }catch(e){ console.error(e); renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
   });
 }
@@ -528,6 +553,8 @@ function render(){
   $('#app').innerHTML = `
   ${API.mode==='demo'?'<div class="demo">نسخة معاينة · البيانات تجريبية ومش بتتحفظ على السيرفر · <u data-act="resetDemo">إعادة البيانات</u></div>':''}
   <header class="hdr"><img src="${LOGO}" alt=""><div class="tt"><b>قسم المشاريع</b><small>${isAdmin()&&!S.viewAs?'لوحة مدير المشاريع':'عنوان الرخام'}</small></div>
+    ${isAdmin()&&!S.viewAs?`<button class="onl" id="onlineBtn" data-act="openOnline" title="مين متصل"><i></i><span id="onlineN">0</span> متصل</button>`:''}
+    <button class="ib bell" data-act="openBell" title="الإشعارات">${ic('bell',20)}<span class="n hide" id="bellN">0</span></button>
     ${isAdmin()&&!S.viewAs?`<button class="ib" data-act="newVisit" title="تسجيل زيارة">${ic('plus',20)}</button>`:''}
     <button class="av" data-act="account">${esc(initials(S.me.name))}</button></header>
   ${S.viewAs?`<div class="viewas">${ic('eye',18)}<span>إنت شغال على شاشة <b>${esc(S.viewAs.name)}</b> · أي حاجة تسجلها هتتسجل باسمه</span><button data-act="exitView">رجوع للوحتي</button></div>`:''}
@@ -587,15 +614,15 @@ function custItem(c,mode){
     <div class="avt" style="background:${c.source==='old'?'var(--gold)':'var(--g)'};width:40px;height:40px">${ic(c.type==='site'?'building':'user',19)}</div>
     <div class="grow"><b class="ell">${esc(c.name)}</b>
       <div class="meta ell">${c.code?esc(c.code)+' · ':''}${c.phone?`<span dir="ltr">${esc(c.phone)}</span>`:'بدون رقم'}${c.lastVisitAt?' · آخر زيارة '+fDate(c.lastVisitAt):''}</div>
-      <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">${mode==='act'&&st?`<span class="badge ${st[1]}">${st[0]}</span>`:''}${c.lastResult&&mode!=='act'?`<span class="badge ${(RESULTS.find(r=>r[0]===c.lastResult)||[])[1]||''}">${esc(c.lastResult)}</span>`:''}${c.nextVisitAt?`<span class="badge ${due?'red':'blue'}">${ic('cal',12,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}</div>
+      <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">${unreadBadge(c)}${mode==='act'&&st?`<span class="badge ${st[1]}">${st[0]}</span>`:''}${c.lastResult&&mode!=='act'?`<span class="badge ${(RESULTS.find(r=>r[0]===c.lastResult)||[])[1]||''}">${esc(c.lastResult)}</span>`:''}${c.nextVisitAt?`<span class="badge ${due?'red':'blue'}">${ic('cal',12,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}</div>
     </div></button>`;
 }
 
 /* ================= شاشات المندوب ================= */
 async function repHome(m){
   const uid=subjectUid(); const who=S.viewAs||S.me;
-  const [vs,cs]=await Promise.all([visitsOf(uid),customersOf(uid)]);
-  S._cust=cs; S._vis=vs;
+  const [vs,cs,ts]=await Promise.all([visitsOf(uid),customersOf(uid),tasksFor(uid).catch(()=>[])]);
+  S._cust=cs; S._vis=vs; S._tasks=ts; const openT=ts.filter(t=>t.status==='open');
   const s0=startOfDay(), wk=periodRange('week')[0];
   const vToday=vs.filter(v=>v.createdAt>=s0).length, vWeek=vs.filter(v=>v.createdAt>=wk).length;
   const due=cs.filter(c=>c.nextVisitAt&&c.nextVisitAt<=today()&&!['غير مهتم','رقم غير صحيح'].includes(c.actStatus)).sort((a,b)=>a.nextVisitAt<b.nextVisitAt?-1:1);
@@ -609,6 +636,7 @@ async function repHome(m){
     <div class="st ${due.length?'warn':''}"><b>${due.length}</b><span>متابعات مستحقة</span></div>
   </div>
   ${`<button class="cta" data-act="newVisit"><div class="ic">${ic('pin',26)}</div><div class="grow"><b>سجّل زيارة جديدة</b><small>صورة + موقعك بيتسجل تلقائي</small></div>${ic('plus',22)}</button>`}
+  ${openT.length?`<div class="sec"><h3>مهام من المدير</h3><span class="cnt">${openT.length}</span></div>${openT.map(t=>taskItem(t,{canDo:true})).join('')}`:''}
   <div class="sec"><h3>متابعات مستحقة</h3>${due.length?`<span class="cnt">${due.length}</span>`:''}</div>
   ${due.length? due.slice(0,8).map(c=>custItem(c)).join('') : `<div class="card empty" style="padding:18px">${ic('check',28)}مفيش متابعات متأخرة. شغل نضيف</div>`}
   ${oldNew?`<button class="it" data-tab="act" style="margin-top:12px;background:var(--gold3);border-color:var(--gold2)"><div class="avt" style="background:var(--gold)">${ic('bolt',20)}</div><div class="grow"><b>تنشيط الداتا القديمة</b><span class="meta">عندك ${oldNew} عميل لسه ما اتواصلتش معاهم</span></div></button>`:''}
@@ -676,7 +704,7 @@ function actItem(c,admin){
     <button class="row" data-act="openCust" data-id="${c.id}" style="width:100%;text-align:start">
       <div class="grow"><b style="font-weight:500" class="ell">${esc(c.name)}</b>
       <div class="meta small muted">${c.code?esc(c.code)+' · ':''}${c.phone?`<span dir="ltr">${esc(c.phone)}</span>`:'بدون رقم'}${admin?' · '+esc((userById(c.ownerUid)||{}).name||'غير موزع'):''}</div></div>
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${prioOf(c)==='عالية'?'<span class="badge gold">★ أولوية عالية</span>':''}<span class="badge ${st[1]}">${st[0]}</span></div></button>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${unreadBadge(c)}${prioOf(c)==='عالية'?'<span class="badge gold">★ أولوية عالية</span>':''}<span class="badge ${st[1]}">${st[0]}</span></div></button>
     ${c.nextVisitAt||c.lastContactAt?`<div class="small muted" style="margin-top:6px">${c.nextVisitAt?`<span style="color:${due?'var(--red)':'var(--blue)'}">${ic('cal',13,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}${c.lastContactAt?' · آخر تواصل '+ago(c.lastContactAt):''}</div>`:''}
     ${c.contactNote?`<div class="small" style="margin-top:4px;color:#555">“${esc(c.contactNote)}”</div>`:''}
     ${admin?'':`<div class="btns" style="margin-top:10px">
@@ -711,6 +739,7 @@ async function adminHome(m){
     <div class="st ${dueAll?'warn':''}"><b>${dueAll}</b><span>متابعات متأخرة عند الفريق</span></div>
   </div>
   ${byRes.length?`<div class="card" style="margin-top:10px"><div class="small muted">نتايج الزيارات</div><div class="resbar">${byRes.map(([r,n])=>`<i style="width:${n*100/vs.length}%;background:${RES_COLORS[r]}"></i>`).join('')}</div><div class="legend">${byRes.map(([r,n])=>`<span><i style="background:${RES_COLORS[r]}"></i>${r} ${n}</span>`).join('')}</div></div>`:''}
+  ${await adminTasksCard()}
   <div class="sec"><h3>المناديب</h3><span class="cnt">${rs.length}</span></div>
   ${rs.map(r=>{ const rv=vs.filter(v=>v.repUid===r.id); const last=rv[0]; const fl=rv.filter(v=>v.flagged).length; const col=repColor(r.id);
     return `<div class="rep"><div class="top"><div class="avt" style="background:${col}">${esc(initials(r.name))}</div>
@@ -1005,8 +1034,11 @@ async function openVisit(id){
 
 /* ---- ملف عميل ---- */
 async function openCust(id){
-  let c=(S._cust||[]).concat(S._allCust||[],S._custMine||[]).find(x=>x.id===id) || await API.get('customers',id);
-  if(!c) return;
+  let c=custCache(id) || await API.get('customers',id);
+  if(!c) return; S._openC=c;
+  const [cms,ctasks]=await Promise.all([loadComments(c), API.query('tasks',[['customerId','==',id]].concat(isMeAdmin()?[]:[['repUid','==',S.me.id]])).catch(()=>[])]);
+  S._tasks=(S._tasks||[]).filter(t=>t.customerId!==id).concat(ctasks);
+  markSeen(c);
   const vs=(await API.query('visits',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]]))).sort((a,b)=>b.createdAt-a.createdAt);
   let contacts=[]; try{ contacts=(await API.query('contacts',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]]))).sort((a,b)=>b.createdAt-a.createdAt); }catch(e){}
   S._vis=(S._vis||[]).concat(vs);
@@ -1025,6 +1057,11 @@ async function openCust(id){
       ${c.notes?`<dt>ملاحظات</dt><dd>${esc(c.notes)}</dd>`:''}
     </dl></div>
     ${mine?`<div class="btns" style="margin-top:12px">${ph?`<a class="btn sm sec2" href="tel:+${ph}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener">${ic('wa',16)} واتساب</a>`:''}<button class="btn sm" data-act="visitCust" data-id="${c.id}">${ic('pin',16)} زيارة</button></div>`:''}
+    ${isAdmin()&&!S.viewAs&&c.ownerUid?`<div class="btns" style="margin-top:10px"><button class="btn sm gold" data-act="newTask" data-id="${c.id}">${ic('pinpaper',16)} مهمة للمندوب</button></div>`:''}
+    ${ctasks.length?`<div class="sec"><h3>المهام</h3><span class="cnt">${ctasks.length}</span></div>${ctasks.sort(taskSort).map(t=>taskItem(t,{showRep:isMeAdmin()&&!S.viewAs,canDo:!(isMeAdmin()&&!S.viewAs)})).join('')}`:''}
+    <div class="sec"><h3>التعليقات</h3>${cms.length?`<span class="cnt">${cms.length}</span>`:''}</div>
+    <div id="cmList">${commentsHtml(cms)}</div>
+    <div class="cmbox"><textarea class="inp" id="cmIn" placeholder="${isMeAdmin()?'اكتب توجيه أو سؤال للمندوب…':'اكتب رد أو تحديث للمدير…'}"></textarea><button class="btn sm" id="cmBtn" data-act="sendComment" data-id="${c.id}" style="width:auto;padding:0 14px;height:44px">إرسال</button></div>
     ${isAdmin()&&!S.viewAs?`<div class="fld"><label>نقل العميل لمندوب تاني</label><select class="inp" data-chg="moveCust" data-id="${c.id}">${reps().map(r=>`<option value="${r.id}" ${c.ownerUid===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select></div>`:''}
     <div class="sec"><h3>الزيارات</h3><span class="cnt">${vs.length}</span></div>
     ${vs.length?vs.map(v=>visitItem(v,isAdmin())).join(''):'<div class="card empty" style="padding:16px">لسه مفيش زيارات</div>'}
@@ -1160,6 +1197,232 @@ async function exportAct(){
 }
 
 /* ================= الأحداث ================= */
+/* ================= التواصل: تعليقات + مهام + إشعارات + المتصلين ================= */
+const PUSH_PING_URL = '';   // رابط سكربت إرسال الإشعارات (Apps Script)
+const VAPID_KEY = 'BCX34NOLVHbVoJ6ysPIiIhfBMotATsx42A96GGMY-ldgYKJw3p4O4ruVb5_zXOhyRSuQJLwUZ-nwLzalM6dnb_4';       // Web Push certificate من Firebase
+const ADMINS = 'ADMINS';    // مستلم الإشعار = كل المديرين
+const ONLINE_MS = 3*60*1000;
+
+const isMeAdmin = () => S.me && S.me.role==='admin';
+function unreadComment(c){
+  if(!c || !c.lastCommentAt) return false;
+  if(isMeAdmin()) return c.lastCommentBy!==S.me.id && c.lastCommentAt>(c.seenAdmin||0);
+  return c.lastCommentBy!==S.me.id && c.lastCommentAt>(c.seenRep||0);
+}
+const unreadBadge = c => unreadComment(c) ? `<span class="badge gold">${ic('chat',12,2)} تعليق جديد</span>` : '';
+
+async function notify(toUid, title, body, extra={}){
+  if(!toUid || toUid===S.me.id) return;
+  try{
+    await API.add('notifs',{toUid,fromUid:S.me.id,fromName:S.me.name,title,body:String(body||'').slice(0,240),read:false,pushed:false,createdAt:'__SV__',...extra});
+    pingPush();
+  }catch(e){ console.warn('notify',e); }
+}
+function pingPush(){ if(PUSH_PING_URL && API.mode!=='demo'){ try{ fetch(PUSH_PING_URL+'?t='+Date.now(),{mode:'no-cors'}).catch(()=>{}); }catch(e){} } }
+
+/* ---------- التعليقات ---------- */
+async function loadComments(c){
+  let list=[]; try{ list=await API.query('comments',[['customerId','==',c.id]].concat(isMeAdmin()?[]:[['ownerUid','==',S.me.id]])); }catch(e){ console.warn(e); }
+  return list.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+}
+function commentsHtml(list){
+  if(!list.length) return `<div class="small muted" style="padding:6px 2px">لسه مفيش تعليقات على العميل ده.</div>`;
+  return list.map(x=>{ const mine=x.authorUid===S.me.id;
+    return `<div class="cm ${x.authorRole==='admin'?'adm':''} ${mine?'me':''}"><div class="cmh"><b>${esc(x.authorName||'')}</b>${x.authorRole==='admin'?' · مدير المشاريع':''}<span>${fWhen(x.createdAt)}</span></div><div class="cmt">${esc(x.text)}</div></div>`; }).join('');
+}
+async function sendComment(cid){
+  const inp=$('#cmIn'); const text=(inp&&inp.value||'').trim(); if(!text){ toast('اكتب التعليق الأول'); return; }
+  const c=custCache(cid) || await API.get('customers',cid); if(!c) return;
+  const now=Date.now();
+  inp.value=''; const btn=$('#cmBtn'); if(btn) btn.disabled=true;
+  try{
+    await API.add('comments',{customerId:c.id,customerName:c.name,ownerUid:c.ownerUid,authorUid:S.me.id,authorName:S.me.name,authorRole:S.me.role,text,createdAt:'__SV__'});
+    const patch=isMeAdmin()?{lastCommentAt:now,lastCommentBy:S.me.id,seenAdmin:now}:{lastCommentAt:now,lastCommentBy:S.me.id,seenRep:now};
+    await API.update('customers',c.id,patch); Object.assign(c,patch);
+    if(isMeAdmin()) notify(c.ownerUid,'💬 تعليق من '+S.me.name.split(' ')[0]+' · '+c.name,text,{kind:'comment',customerId:c.id});
+    else notify(ADMINS,'💬 '+S.me.name+' · '+c.name,text,{kind:'comment',customerId:c.id});
+    const box=$('#cmList'); if(box) box.innerHTML=commentsHtml(await loadComments(c));
+    toast('اتبعت التعليق');
+  }catch(e){ toast('مقدرش أبعت: '+(e.message||e)); inp.value=text; }
+  if(btn) btn.disabled=false;
+}
+function custCache(id){ return (S._cust||[]).concat(S._allCust||[],S._custMine||[]).find(x=>x.id===id); }
+async function markSeen(c){
+  if(!unreadComment(c)) return;
+  const now=Date.now(); const patch=isMeAdmin()?{seenAdmin:now}:{seenRep:now};
+  try{ await API.update('customers',c.id,patch); Object.assign(c,patch); }catch(e){}
+}
+
+/* ---------- المهام ---------- */
+const DUE_CHIPS=[[0,'النهارده'],[1,'بكرة'],[3,'بعد 3 أيام'],[7,'بعد أسبوع']];
+function openNewTask(cid){
+  const c=custCache(cid); if(!c) return;
+  const rep=userById(c.ownerUid);
+  S.nt={cid,due:addDays(1)};
+  sheet('مهمة جديدة',`<div class="small muted" style="margin-top:10px">${esc(c.name)} · المندوب: <b style="font-weight:500">${esc(rep?rep.name:'غير موزع')}</b></div>
+    <div class="fld"><label>المطلوب <i>*</i></label><textarea class="inp" id="ntText" placeholder="مثال: كلّم العميل وقوله على عرض الجرانيت الجديد"></textarea></div>
+    <div class="fld"><label>آخر ميعاد</label><div class="chips wrap" id="ntDueC">${DUE_CHIPS.map(([n,l])=>`<button class="chip ${addDays(n)===S.nt.due?'on':''}" data-act="ntDue" data-v="${addDays(n)}">${l}</button>`).join('')}</div><input class="inp" type="date" id="ntDueD" min="${today()}" value="${S.nt.due}" style="margin-top:8px"></div>`,
+    `<button class="btn" data-act="saveTask">${ic('check',20)} إرسال المهمة</button>`);
+  $('#ntDueD').addEventListener('change',e=>{ S.nt.due=e.target.value; document.querySelectorAll('#ntDueC .chip').forEach(b=>b.classList.toggle('on',b.dataset.v===S.nt.due)); });
+}
+async function saveTask(btn){
+  const T=S.nt; const text=($('#ntText').value||'').trim(); if(!text){ toast('اكتب المطلوب'); return; }
+  const c=custCache(T.cid); if(!c||!c.ownerUid){ toast('العميل مش متوزع على مندوب'); return; }
+  const rep=userById(c.ownerUid);
+  btn.disabled=true;
+  try{
+    const r=await API.add('tasks',{repUid:c.ownerUid,repName:rep?rep.name:'',customerId:c.id,customerName:c.name,text,due:T.due||'',status:'open',result:'',createdByUid:S.me.id,createdByName:S.me.name,createdAt:'__SV__'});
+    notify(c.ownerUid,'📌 مهمة جديدة · '+c.name,text+(T.due?' · '+dueLabel(T.due):''),{kind:'task',taskId:r.id,customerId:c.id});
+    closeSheet(); toast('اتبعتت المهمة لـ '+(rep?rep.name:''));
+  }catch(e){ toast('مقدرش أحفظ: '+(e.message||e)); btn.disabled=false; }
+}
+async function tasksFor(uid){ return (await API.query('tasks',[['repUid','==',uid]])).sort(taskSort); }
+function taskSort(a,b){ if(a.status!==b.status) return a.status==='open'?-1:1; if(a.status==='open') return (a.due||'9')<(b.due||'9')?-1:1; return (b.doneAt||0)-(a.doneAt||0); }
+function taskItem(t,opts={}){
+  const late=t.status==='open'&&t.due&&t.due<today(), due=t.status==='open'&&t.due&&t.due<=today();
+  return `<div class="card task ${t.status==='done'?'done':''}" style="padding:12px">
+    <div class="row" style="align-items:flex-start"><div class="avt" style="background:${t.status==='done'?'var(--g)':late?'var(--red)':'var(--gold)'};width:36px;height:36px">${ic(t.status==='done'?'check':'pinpaper',18)}</div>
+    <div class="grow"><div style="line-height:1.6">${esc(t.text)}</div>
+      <div class="small muted" style="margin-top:3px"><button class="lnk2" data-act="openCust" data-id="${t.customerId}">${esc(t.customerName||'')}</button>${opts.showRep?' · '+esc(t.repName||''):''}${opts.showRep?'':' · من '+esc((t.createdByName||'').split(' ')[0])}</div>
+      <div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">${t.status==='done'?`<span class="badge">تمت ${t.doneAt?fWhen(t.doneAt):''}</span>`:t.due?`<span class="badge ${late?'red':due?'amber':'blue'}">${ic('cal',12,2)} ${dueLabel(t.due)}</span>`:''}</div>
+      ${t.result?`<div class="small" style="margin-top:6px;color:#555">النتيجة: ${esc(t.result)}</div>`:''}</div></div>
+    ${t.status==='open'&&opts.canDo?`<div class="btns" style="margin-top:10px"><button class="btn sm" data-act="doneTask" data-id="${t.id}">${ic('check',16)} تمت</button></div>`:''}
+  </div>`;
+}
+function openDoneTask(id){
+  const t=(S._tasks||[]).find(x=>x.id===id); if(!t) return;
+  S.dt={id};
+  sheet('تمت المهمة',`<div class="small muted" style="margin-top:10px">${esc(t.text)}</div>
+    <div class="fld"><label>إيه اللي حصل؟ <i>*</i></label><textarea class="inp" id="dtRes" placeholder="مثال: كلمته وطلب عرض سعر"></textarea></div>`,
+    `<button class="btn" data-act="saveDoneTask">${ic('check',20)} حفظ</button>`);
+}
+async function saveDoneTask(btn){
+  const t=(S._tasks||[]).find(x=>x.id===S.dt.id); if(!t) return;
+  const res=($('#dtRes').value||'').trim(); if(!res){ toast('اكتب اللي حصل'); return; }
+  btn.disabled=true;
+  try{
+    const patch={status:'done',result:res,doneAt:Date.now()};
+    await API.update('tasks',t.id,patch); Object.assign(t,patch);
+    notify(t.createdByUid||ADMINS,'✅ '+actor().name.split(' ')[0]+' خلّص مهمة · '+(t.customerName||''),res,{kind:'taskDone',taskId:t.id,customerId:t.customerId});
+    closeSheet(); toast('اتسجلت'); renderTab();
+  }catch(e){ toast('مقدرش أحفظ: '+(e.message||e)); btn.disabled=false; }
+}
+async function openTasksAdmin(){
+  const all=(await API.query('tasks')).sort(taskSort); S._tasks=all;
+  const f=S.taskF||'open', rep=S.taskRep||'all';
+  const by=all.filter(t=>rep==='all'||t.repUid===rep);
+  const groups=[['open','مفتوحة'],['late','متأخرة'],['done','خلصت']];
+  const inG=(t,g)=> g==='open'?t.status==='open' : g==='late'?(t.status==='open'&&t.due&&t.due<today()) : t.status==='done';
+  sheet('المهام',`<select class="inp" data-chg="taskRep" style="padding:9px 12px;margin-top:10px">${[['all','كل المناديب'],...reps().map(r=>[r.id,r.name])].map(([k,l])=>`<option value="${k}" ${rep===k?'selected':''}>${esc(l)}</option>`).join('')}</select>
+    <div class="chips" style="margin-top:10px">${groups.map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="taskF" data-v="${k}">${l} <span style="opacity:.6">${by.filter(t=>inG(t,k)).length}</span></button>`).join('')}</div>
+    <div style="margin-top:8px">${by.filter(t=>inG(t,f)).map(t=>taskItem(t,{showRep:true})).join('')||`<div class="card empty">${ic('check',28)}مفيش مهام هنا</div>`}</div>
+    <div class="small muted" style="margin-top:12px">عشان تعمل مهمة جديدة: افتح أي عميل واضغط «مهمة للمندوب».</div>`,'',{full:true});
+}
+
+/* ---------- الجرس (الإشعارات) ---------- */
+async function myNotifs(){
+  const to=isMeAdmin()?[S.me.id,ADMINS]:[S.me.id];
+  const l=await API.query('notifs',[['toUid','in',to]]);
+  return l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+}
+async function refreshBell(){
+  if(!S.me) return;
+  try{ const l=await myNotifs(); S._notifs=l; const n=l.filter(x=>!x.read).length; S._unread=n;
+    const b=$('#bellN'); if(b){ b.textContent=n>99?'99+':n; b.classList.toggle('hide',!n); }
+  }catch(e){ console.warn('bell',e); }
+}
+async function openBell(){
+  const l=S._notifs||await myNotifs();
+  const st=pushState();
+  sheet('الإشعارات',`${st.html}
+    <div style="margin-top:10px">${l.length? l.slice(0,60).map(x=>`<button class="it ntf ${x.read?'':'unread'}" data-act="openNotif" data-id="${x.id}"><div class="avt" style="background:${x.kind==='task'?'var(--gold)':x.kind==='taskDone'?'var(--g)':'var(--blue)'};width:38px;height:38px">${ic(x.kind==='task'?'pinpaper':x.kind==='taskDone'?'check':'chat',18)}</div><div class="grow"><b class="ell">${esc(x.title)}</b><span class="meta" style="white-space:normal">${esc(x.body||'')}</span><span class="meta">${fWhen(x.createdAt)}</span></div></button>`).join('') : `<div class="card empty">${ic('bell',30)}مفيش إشعارات لسه</div>`}</div>`,'',{full:true});
+  const unread=l.filter(x=>!x.read);
+  if(unread.length){ Promise.all(unread.map(x=>API.update('notifs',x.id,{read:true}).then(()=>{x.read=true;}).catch(()=>{}))).then(refreshBell); }
+}
+async function openNotif(id){
+  const x=(S._notifs||[]).find(n=>n.id===id); if(!x) return;
+  closeSheet(true);
+  if(x.kind==='taskDone' && isMeAdmin()){ S.taskF='done'; openTasksAdmin(); return; }
+  if(x.customerId) openCust(x.customerId);
+}
+
+/* ---------- إشعارات الموبايل (Push) ---------- */
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+function pushSupported(){ return ('serviceWorker' in navigator) && ('Notification' in window) && ('PushManager' in window); }
+function pushState(){
+  if(API.mode==='demo') return {html:`<div class="warnbox">${ic('bell',18)}<div>في النسخة الحقيقية هنا بتفعّل إشعارات الموبايل.</div></div>`};
+  if(isIOS && !isStandalone()) return {html:`<div class="warnbox">${ic('bell',18)}<div><b style="font-weight:500">عشان الإشعارات توصلك على الآيفون:</b><br>افتح اللينك من Safari ← زرار المشاركة ← «إضافة إلى الشاشة الرئيسية»، وافتح التطبيق من الأيقونة الجديدة، وبعدين ارجع هنا وفعّل الإشعارات.</div></div>`};
+  if(!pushSupported()) return {html:`<div class="warnbox">${ic('warn',18)}<div>المتصفح ده مش بيدعم الإشعارات. افتح التطبيق من Chrome أو Safari.</div></div>`};
+  if(Notification.permission==='denied') return {html:`<div class="warnbox red">${ic('warn',18)}<div>الإشعارات مقفولة للتطبيق ده من إعدادات الموبايل. افتح الإعدادات ← الإشعارات ← «قسم المشاريع» وخليها مسموحة.</div></div>`};
+  if(Notification.permission==='granted' && S.me && S.me.notifOn) return {html:`<div class="card row" style="padding:10px 12px">${ic('bell',18)}<div class="grow small">الإشعارات شغالة على الموبايل ده ✓</div><button class="btn sm ghost" data-act="enablePush">تحديث</button></div>`};
+  return {html:`<button class="cta" data-act="enablePush" style="margin-top:12px"><div class="ic">${ic('bell',24)}</div><div class="grow"><b>فعّل الإشعارات</b><small>توصلك التعليقات والمهام حتى والتطبيق مقفول</small></div></button>`};
+}
+let _msg=null, _swReg=null;
+async function initMessaging(){
+  if(_msg) return _msg;
+  if(!window.firebase || !firebase.messaging) await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+  _swReg = await navigator.serviceWorker.register('sw.js',{scope:'./'});
+  _msg = firebase.messaging();
+  _msg.onMessage(p=>{ const n=(p&&p.notification)||{}; toast((n.title||'إشعار جديد')+(n.body?' · '+n.body:''),4500); refreshBell(); });
+  return _msg;
+}
+async function enablePush(btn){
+  if(API.mode==='demo'){ toast('في النسخة الحقيقية بس'); return; }
+  if(!VAPID_KEY){ toast('الإشعارات لسه بتتجهز'); return; }
+  if(isIOS && !isStandalone()){ toast('ضيف التطبيق للشاشة الرئيسية الأول'); return; }
+  if(btn) btn.disabled=true;
+  try{
+    const p = await Notification.requestPermission();
+    if(p!=='granted'){ toast('لازم تسمح بالإشعارات'); if(btn) btn.disabled=false; return; }
+    const m = await initMessaging();
+    const tok = await m.getToken({vapidKey:VAPID_KEY, serviceWorkerRegistration:_swReg});
+    if(!tok) throw new Error('مفيش توكن');
+    await API.addToken(S.me.id, tok);
+    S.me.notifOn=true;
+    toast('تمام، الإشعارات اشتغلت ✓');
+    closeSheet(true); openBell();
+  }catch(e){ console.error(e); toast('مقدرش أفعّل الإشعارات: '+(e.message||e),4000); if(btn) btn.disabled=false; }
+}
+async function silentPushRefresh(){
+  try{ if(API.mode==='demo'||!VAPID_KEY||!pushSupported()||Notification.permission!=='granted') return;
+    const m=await initMessaging(); const tok=await m.getToken({vapidKey:VAPID_KEY, serviceWorkerRegistration:_swReg});
+    if(tok && !(S.me.fcmTokens||[]).includes(tok)){ await API.addToken(S.me.id,tok); S.me.notifOn=true; }
+  }catch(e){ console.warn('push refresh',e); }
+}
+
+/* ---------- المتصلين ---------- */
+let _hb=null;
+function startHeartbeat(){
+  const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()}).catch(()=>{}); refreshBell(); if(isMeAdmin()) refreshOnline(); };
+  clearInterval(_hb); beat(); _hb=setInterval(beat,60000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) beat(); });
+}
+async function refreshOnline(){
+  try{ S.users=await API.query('users'); }catch(e){ return; }
+  const n=S.users.filter(u=>u.id!==S.me.id && u.lastSeen && Date.now()-u.lastSeen<ONLINE_MS).length;
+  const b=$('#onlineN'); if(b) b.textContent=n;
+  const w=$('#onlineBtn'); if(w) w.classList.toggle('live',n>0);
+}
+function openOnline(){
+  const list=reps().slice().sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
+  sheet('مين متصل',`<div style="margin-top:10px">${list.map(u=>{ const on=u.lastSeen&&Date.now()-u.lastSeen<ONLINE_MS;
+    return `<div class="it" style="cursor:default"><div class="avt" style="background:${repColor(u.id)}">${esc(initials(u.name))}</div><div class="grow"><b>${esc(u.name)}</b><span class="meta">${on?'متصل دلوقتي':u.lastSeen?'آخر ظهور '+ago(u.lastSeen):'لسه ما دخلش التطبيق'}${u.notifOn?' · الإشعارات شغالة':''}</span></div><span class="dot ${on?'on':''}"></span></div>`; }).join('')}</div>
+    <div class="small muted" style="margin-top:10px">«متصل» يعني فاتح التطبيق خلال آخر 3 دقايق.</div>`);
+}
+
+/* ---------- فتح من إشعار (?c=العميل) ---------- */
+function handleDeepLink(){
+  const q=new URLSearchParams(location.search); const c=q.get('c');
+  if(c){ history.replaceState(null,'',location.pathname); setTimeout(()=>openCust(c),300); }
+}
+
+async function adminTasksCard(){
+  let ts=[]; try{ ts=await API.query('tasks'); }catch(e){}
+  const open=ts.filter(t=>t.status==='open'), late=open.filter(t=>t.due&&t.due<today()), done=ts.filter(t=>t.status==='done'&&t.doneAt&&t.doneAt>=startOfDay());
+  return `<button class="it" data-act="openTasks" style="margin-top:12px"><div class="avt" style="background:var(--gold)">${ic('pinpaper',20)}</div><div class="grow"><b>المهام</b><span class="meta">${open.length} مفتوحة${late.length?` · <span style="color:var(--red)">${late.length} متأخرة</span>`:''} · ${done.length} خلصت النهارده</span></div></button>`;
+}
+
 document.addEventListener('click',async e=>{
   const t=e.target.closest('[data-act],[data-tab]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.q=''; if(t.closest('.nav')||t.closest('main')) { closeSheet(true); } render(); window.scrollTo(0,0); return; }
@@ -1180,6 +1443,18 @@ document.addEventListener('click',async e=>{
     case 'changePw': { const p=$('#npw').value; if(p.length<6){ toast('6 حروف أو أرقام على الأقل'); return; } try{ await API.changePassword(p); toast('اتغيرت كلمة المرور'); closeSheet(); }catch(err){ toast(err.code==='auth/requires-recent-login'?'اخرج وادخل تاني الأول وبعدين غيّرها':'مشكلة: '+(err.message||err),4000); } break; }
     case 'reload': renderTab(); break;
     case 'closeSheet': closeSheet(); break;
+    case 'openBell': openBell(); break;
+    case 'openNotif': openNotif(d.id); break;
+    case 'enablePush': enablePush(t); break;
+    case 'openOnline': openOnline(); break;
+    case 'sendComment': sendComment(d.id); break;
+    case 'newTask': closeSheet(true); openNewTask(d.id); break;
+    case 'ntDue': S.nt.due=d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b===t)); $('#ntDueD').value=d.v; break;
+    case 'saveTask': saveTask(t); break;
+    case 'doneTask': openDoneTask(d.id); break;
+    case 'saveDoneTask': saveDoneTask(t); break;
+    case 'taskF': S.taskF=d.v; openTasksAdmin(); break;
+    case 'openTasks': openTasksAdmin(); break;
     case 'closeSheetRefresh': closeSheet(); renderTab(); break;
     case 'newVisit': openNewVisit(); break;
     case 'visitCust': closeSheet(true); openNewVisit(d.id); break;
@@ -1227,7 +1502,8 @@ document.addEventListener('change',async e=>{
   const t=e.target; const k=t.dataset&&t.dataset.chg; if(!k) return;
   if(k==='rep'||k==='res'){ S.filt[k]=t.value; renderTab(); }
   else if(k==='actRep'){ S.actRep=t.value; renderTab(); }
-  else if(k==='moveCust'){ await API.update('customers',t.dataset.id,{ownerUid:t.value}); const c=(S._cust||[]).concat(S._allCust||[]).find(x=>x.id===t.dataset.id); if(c) c.ownerUid=t.value; toast('اتنقل العميل'); }
+  else if(k==='taskRep'){ S.taskRep=t.value; openTasksAdmin(); }
+  else if(k==='moveCust'){ await API.update('customers',t.dataset.id,{ownerUid:t.value}); try{ const cm=await API.query('comments',[['customerId','==',t.dataset.id]]); await Promise.all(cm.map(x=>API.update('comments',x.id,{ownerUid:t.value}))); }catch(e){} const c=(S._cust||[]).concat(S._allCust||[]).find(x=>x.id===t.dataset.id); if(c) c.ownerUid=t.value; toast('اتنقل العميل'); }
 });
 let qT; document.addEventListener('input',e=>{ if(e.target.id==='q'){ clearTimeout(qT); const v=e.target.value; qT=setTimeout(()=>{ S.q=v; const pos=e.target.selectionStart; renderTab().then(()=>{ const q=$('#q'); if(q){ q.focus(); try{q.setSelectionRange(pos,pos);}catch(_){} } }); },300); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.target.id==='lp'||e.target.id==='lu')){ const b=document.querySelector('[data-act="login"]'); b&&b.click(); } });

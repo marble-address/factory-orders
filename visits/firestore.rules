@@ -20,7 +20,10 @@ service cloud.firestore {
                     || (signedIn() && request.auth.uid == uid
                         && request.auth.token.email == 'mahmoud@marble-visits.app'
                         && request.resource.data.role == 'admin');
-      allow update: if isAdmin();
+      allow update: if isAdmin()
+                    || (signedIn() && request.auth.uid == uid
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['lastSeen', 'fcmTokens', 'notifOn', 'notifAt']));
       allow delete: if false;
     }
 
@@ -49,6 +52,35 @@ service cloud.firestore {
       allow read: if isAdmin() || (isRep() && mine(resource.data));
       allow create: if isAdmin() || (isRep() && mine(request.resource.data));
       allow update, delete: if isAdmin();
+    }
+
+    // التعليقات على العميل (بين المدير والمندوب)
+    match /comments/{id} {
+      allow read: if isAdmin() || (isRep() && resource.data.ownerUid == request.auth.uid);
+      allow create: if request.resource.data.authorUid == request.auth.uid
+                    && (isAdmin() || (isRep() && request.resource.data.ownerUid == request.auth.uid));
+      allow update, delete: if isAdmin();
+    }
+
+    // المهام: المدير بيعملها، والمندوب بيقفلها بس
+    match /tasks/{id} {
+      allow read: if isAdmin() || (isRep() && mine(resource.data));
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+                    || (isRep() && mine(resource.data)
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['status', 'result', 'doneAt']));
+    }
+
+    // الإشعارات (الجرس) — وهي نفسها طابور إشعارات الموبايل
+    match /notifs/{id} {
+      allow read: if isAdmin() || (isUser() && resource.data.toUid == request.auth.uid);
+      allow create: if isUser() && request.resource.data.fromUid == request.auth.uid
+                    && request.resource.data.pushed == false;
+      allow update: if isAdmin()
+                    || (isUser() && resource.data.toUid == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
+      allow delete: if isAdmin();
     }
 
     // أي حاجة تانية مقفولة
