@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="الزيارات الميدانية">
-<title>الزيارات الميدانية – عنوان الرخام</title>
+<meta name="apple-mobile-web-app-title" content="قسم المشاريع">
+<title>قسم المشاريع – عنوان الرخام</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -505,7 +505,7 @@ function renderLogin(msg){
   const demo = API.mode==='demo';
   const users = demo ? Object.entries(API._db().users) : [];
   $('#app').innerHTML = `<div class="login">
-    <div class="lg"><img src="${LOGO}" alt="عنوان الرخام"><h1>الزيارات الميدانية</h1><p>سجّل زياراتك وتابع عملاءك</p></div>
+    <div class="lg"><img src="${LOGO}" alt="عنوان الرخام"><h1>قسم المشاريع</h1><p>سجّل زياراتك وتابع عملاءك</p></div>
     <div class="box">
     ${demo ? `<div class="warnbox" style="margin:0 0 14px">${ic('eye',18)}<div>نسخة معاينة ببيانات تجريبية. اختار تدخل بأي حساب.</div></div>
       ${users.map(([id,u])=>`<button class="it" data-act="demoLogin" data-id="${id}"><div class="avt" style="background:${u.role==='admin'?'var(--gold)':'var(--g)'}">${esc(initials(u.name))}</div><div class="grow"><b>${esc(u.name)}</b><span class="meta">${u.role==='admin'?'مدير المشاريع':'مندوب مبيعات'}</span></div></button>`).join('')}`
@@ -527,7 +527,7 @@ function render(){
                      : [['home','الرئيسية','chart'],['visits','الزيارات','list'],['map','الخريطة','map'],['act','التنشيط','bolt'],['team','الفريق','users']];
   $('#app').innerHTML = `
   ${API.mode==='demo'?'<div class="demo">نسخة معاينة · البيانات تجريبية ومش بتتحفظ على السيرفر · <u data-act="resetDemo">إعادة البيانات</u></div>':''}
-  <header class="hdr"><img src="${LOGO}" alt=""><div class="tt"><b>الزيارات الميدانية</b><small>${isAdmin()&&!S.viewAs?'لوحة مدير المشاريع':'عنوان الرخام'}</small></div>
+  <header class="hdr"><img src="${LOGO}" alt=""><div class="tt"><b>قسم المشاريع</b><small>${isAdmin()&&!S.viewAs?'لوحة مدير المشاريع':'عنوان الرخام'}</small></div>
     ${isAdmin()&&!S.viewAs?`<button class="ib" data-act="newVisit" title="تسجيل زيارة">${ic('plus',20)}</button>`:''}
     <button class="av" data-act="account">${esc(initials(S.me.name))}</button></header>
   ${S.viewAs?`<div class="viewas">${ic('eye',18)}<span>إنت شغال على شاشة <b>${esc(S.viewAs.name)}</b> · أي حاجة تسجلها هتتسجل باسمه</span><button data-act="exitView">رجوع للوحتي</button></div>`:''}
@@ -1052,7 +1052,7 @@ async function doCreateRep(btn){
     await API.createRep({name,username:u,phone,password:pw});
     S.users=await API.query('users');
     const link=location.href.split('#')[0].split('?')[0];
-    const msg=`أهلاً ${name.split(' ')[0]} 👋\nده تطبيق «الزيارات الميدانية» – عنوان الرخام:\n${link}\n\nاسم المستخدم: ${u}\nكلمة المرور: ${pw}\n\nافتح اللينك من Safari أو Chrome وضيفه للشاشة الرئيسية.`;
+    const msg=`أهلاً ${name.split(' ')[0]} 👋\nده تطبيق «قسم المشاريع» – عنوان الرخام:\n${link}\n\nاسم المستخدم: ${u}\nكلمة المرور: ${pw}\n\nافتح اللينك من Safari أو Chrome وضيفه للشاشة الرئيسية.`;
     $('#shb').innerHTML=`<div class="success"><div class="ck">${ic('check',40,2.2)}</div><h3 style="font-weight:500;margin:0">اتعمل حساب ${esc(name)}</h3></div>
       <div class="card"><div class="small muted">ابعتله الرسالة دي:</div><div style="white-space:pre-wrap;margin-top:8px;font-size:14px" id="shareMsg">${esc(msg)}</div></div>`;
     $('#shf').innerHTML=`<div class="btns"><button class="btn sec2" data-act="copyMsg">${ic('copy',18)} نسخ</button>${phone?`<a class="btn" href="https://wa.me/${normPhone(phone)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a>`:`<a class="btn" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a>`}</div>`;
