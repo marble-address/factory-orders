@@ -349,7 +349,7 @@ function getLocation(onUpdate){
     let best=null, done=false, wid=null;
     const finish=(r)=>{ if(done) return; done=true; if(wid!=null) navigator.geolocation.clearWatch(wid); resolve(r); };
     const ok=p=>{ const c=p.coords; if(!best||c.accuracy<best.acc){ best={lat:c.latitude,lng:c.longitude,acc:Math.round(c.accuracy),t:Date.now()}; onUpdate&&onUpdate(best); } if(best.acc<=25) finish(best); };
-    const bad=e=>{ if(best) finish(best); else finish({err: e.code===1?'لازم تسمح للتطبيق بالوصول لموقعك من إعدادات المتصفح':'مش قادر يحدد الموقع، اتأكد إن الـ GPS شغال'}); };
+    const bad=e=>{ if(best) finish(best); else finish({err: e.code===1?'الموقع مقفول للتطبيق. لازم تسمح بيه الأول عشان تقدر تسجل الزيارة':'مش قادر يحدد الموقع، اتأكد إن الـ GPS شغال', denied: e.code===1}); };
     try{ wid=navigator.geolocation.watchPosition(ok,bad,{enableHighAccuracy:true,maximumAge:0,timeout:25000}); }catch(e){ bad({code:0}); }
     setTimeout(()=>{ if(best) finish(best); },12000);
     setTimeout(()=>{ finish(best||{err:'مش قادر يحدد الموقع، اتأكد إن الـ GPS شغال'}); },26000);
@@ -849,7 +849,7 @@ async function openNewVisit(prefillId){
   const V=S.nv={mode: prefillId?'existing':'new', cust: prefillId? cs.find(c=>c.id===prefillId)||null : null, type:'client', category:'', materials:[], result:'', next:'', loc:null, locErr:'', photo:null, thumb:null, photoTime:null};
   if(V.cust&&V.cust.type) V.type=V.cust.type;
   sheet('تسجيل زيارة جديدة',`
-    <div id="locBox" class="loc wait"><span class="spin" style="width:18px;height:18px"></span><span>جاري تحديد موقعك…</span></div>
+    <div id="locBox" class="loc wait"><span class="spin" style="width:18px;height:18px"></span><span>جاري تحديد موقعك…</span></div><div id="locHelp"></div>
     <div class="fld"><label>نوع الزيارة <i>*</i></label><div class="seg" id="segType">${VISIT_TYPES.map(([k,l])=>`<button data-act="nvType" data-v="${k}" class="${V.type===k?'on':''}">${l}</button>`).join('')}</div></div>
     <div class="fld"><label>العميل / المشروع <i>*</i></label>
       <div class="seg" style="margin-bottom:10px">${[['new','عميل جديد'],['existing','عميل عندي']].map(([k,l])=>`<button data-act="nvMode" data-v="${k}" class="${V.mode===k?'on':''}">${l}</button>`).join('')}</div>
@@ -877,13 +877,31 @@ async function startLoc(){
   let r=await getLocation(b=>{ if(S._locTok!==token||!box()) return; V.loc=b; showLoc(); });
   if(S._locTok!==token) return;
   if(r.err && API.mode==='demo'){ r={lat:24.7743+Math.random()*.01,lng:46.6380+Math.random()*.01,acc:15,t:Date.now(),demo:true}; }
-  if(r.err){ V.loc=null; V.locErr=r.err; } else V.loc=r;
+  if(r.err){ V.loc=null; V.locErr=r.err; V.locDenied=!!r.denied; } else { V.loc=r; V.locDenied=false; }
   showLoc();
+}
+function locHelpHtml(){
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  const steps = ios ? [
+    'اضغط على زرار الإعدادات اللي جنب اللينك فوق أو تحت (aA أو ⋯)',
+    'اختار «إعدادات موقع الويب» (Website Settings)',
+    'في «الموقع» (Location) اختار «سماح» (Allow) أو «اسأل» (Ask)',
+    'ارجع هنا واضغط «حاول تاني»',
+    'لو لسه مقفول: الإعدادات ← الخصوصية والأمان ← خدمات الموقع ← مواقع Safari الإلكترونية ← «أثناء الاستخدام»'
+  ] : [
+    'اضغط على علامة القفل أو الإعدادات اللي جنب اللينك فوق',
+    'اختار «الأذونات» أو «إعدادات الموقع»',
+    'خلي «الموقع» على «سماح»',
+    'ارجع هنا واضغط «حاول تاني»',
+    'لو لسه مقفول: اتأكد إن الموقع (GPS) شغال من إعدادات الموبايل'
+  ];
+  return `<div class="card small" style="margin-top:8px;line-height:1.9"><b style="font-weight:500">إزاي تفتح الموقع للتطبيق؟</b><div class="muted" style="margin:2px 0 4px">الموبايل مش بيسأل تاني بعد ما الإذن اترفض مرة، فلازم تفتحه بإيدك:</div><ol style="margin:0;padding-inline-start:18px">${steps.map(x=>`<li>${x}</li>`).join('')}</ol></div>`;
 }
 function showLoc(){
   const V=S.nv, b=$('#locBox'); if(!b) return;
   if(V.loc){ b.className='loc ok'; b.innerHTML=`${ic('pin',18)}<span>تم تحديد موقعك${V.loc.demo?' (تجريبي)':''} · دقة ${V.loc.acc} م</span><button data-act="relocate">تحديث</button>`; }
   else { b.className='loc bad'; b.innerHTML=`${ic('warn',18)}<span>${esc(V.locErr)}</span><button data-act="relocate">حاول تاني</button>`; }
+  const h=$('#locHelp'); if(h) h.innerHTML = (!V.loc && V.locDenied) ? locHelpHtml() : '';
   checkDist();
 }
 function checkDist(){
