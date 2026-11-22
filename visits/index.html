@@ -1020,7 +1020,7 @@ function openContact(id){
   sheet('نتيجة التواصل',`<div class="small muted" style="margin-top:10px">${esc(c.name)}${c.code?' · '+esc(c.code):''}</div>
     <div class="fld"><label>إيه اللي حصل؟ <i>*</i></label><div class="chips wrap" id="ctOut">${CONTACT_OUTCOMES.map(o=>`<button class="chip" data-act="ctOut" data-v="${o}">${o}</button>`).join('')}</div></div>
     <div class="fld" id="ctNextF"><label>ميعاد المتابعة أو الزيارة</label><div class="chips wrap" id="ctNextC">${[[1,'بكرة'],[3,'بعد 3 أيام'],[7,'بعد أسبوع'],[30,'بعد شهر']].map(([n,l])=>`<button class="chip" data-act="ctNext" data-v="${addDays(n)}">${l}</button>`).join('')}</div><input class="inp" type="date" id="ctNextD" min="${today()}" style="margin-top:8px"></div>
-    <div class="fld"><label>ملاحظة</label><textarea class="inp" id="ctNote" placeholder="مثال: طلب نتواصل بعد العيد"></textarea></div>`,
+    <div class="fld"><label>ملاحظة</label><textarea class="inp" id="ctNote" placeholder="مثال: طلب نتواصل في وقت لاحق"></textarea></div>`,
     `<button class="btn" data-act="saveContact">${ic('check',20)} حفظ</button>`);
   $('#ctNextD').addEventListener('change',e=>{ S.ct.next=e.target.value; document.querySelectorAll('#ctNextC .chip').forEach(b=>b.classList.toggle('on',b.dataset.v===S.ct.next)); });
 }
