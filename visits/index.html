@@ -478,7 +478,8 @@ function loadScript(src){ return new Promise((res,rej)=>{ const s=document.creat
 function loadCss(href){ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); }
 
 async function boot(){
-  if(FIREBASE_CONFIG){
+  const DEMO = /[?&]demo(=|&|$)/.test(location.search);
+  if(FIREBASE_CONFIG && !DEMO){
     try{
       await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
       await Promise.all([loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js'),loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js')]);
