@@ -1,0 +1,59 @@
+rules_version = '2';
+// قواعد حماية تطبيق «الزيارات الميدانية» — مشروع marble-visits
+// المدير (role: admin) يشوف ويعدّل كل حاجة. المندوب (role: rep) يشوف ويضيف بياناته هو بس.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function me() { return get(userDoc()).data; }
+    function isUser() { return signedIn() && exists(userDoc()) && me().active == true; }
+    function isAdmin() { return isUser() && me().role == 'admin'; }
+    function isRep() { return isUser() && me().role == 'rep'; }
+    function mine(d) { return d.repUid == request.auth.uid; }
+
+    // المستخدمين
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      // المدير بيضيف المناديب — وحساب المدير نفسه بيتعمل مرة واحدة من شاشة الدخول
+      allow create: if (isAdmin() && request.resource.data.role == 'rep')
+                    || (signedIn() && request.auth.uid == uid
+                        && request.auth.token.email == 'mahmoud@marble-visits.app'
+                        && request.resource.data.role == 'admin');
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // العملاء
+    match /customers/{id} {
+      allow read: if isAdmin() || (isRep() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isAdmin() || (isRep() && request.resource.data.ownerUid == request.auth.uid);
+      allow update: if isAdmin()
+                    || (isRep() && resource.data.ownerUid == request.auth.uid
+                        && request.resource.data.ownerUid == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // الزيارات والصور والتواصل
+    match /visits/{id} {
+      allow read: if isAdmin() || (isRep() && mine(resource.data));
+      allow create: if isAdmin() || (isRep() && mine(request.resource.data));
+      allow update, delete: if isAdmin();
+    }
+    match /photos/{id} {
+      allow read: if isAdmin() || (isRep() && mine(resource.data));
+      allow create: if isAdmin() || (isRep() && mine(request.resource.data));
+      allow update, delete: if isAdmin();
+    }
+    match /contacts/{id} {
+      allow read: if isAdmin() || (isRep() && mine(resource.data));
+      allow create: if isAdmin() || (isRep() && mine(request.resource.data));
+      allow update, delete: if isAdmin();
+    }
+
+    // أي حاجة تانية مقفولة
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
