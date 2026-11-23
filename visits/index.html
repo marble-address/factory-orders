@@ -402,8 +402,11 @@ function liveAPI(){
     async createRep(d){
       let sec = firebase.apps.find(a=>a.name==='sec') || firebase.initializeApp(FIREBASE_CONFIG,'sec');
       const c = await sec.auth().createUserWithEmailAndPassword(em(d.username),d.password);
-      const id=c.user.uid; await sec.auth().signOut();
-      await fs.collection('users').doc(id).set({name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:d.role||'rep',title:d.title||'',active:true,createdAt:SV()});
+      const id=c.user.uid;
+      try{
+        await fs.collection('users').doc(id).set({name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:d.role||'rep',title:d.title||'',active:true,createdAt:SV()});
+      }catch(e){ try{ await c.user.delete(); }catch(_){} try{ await sec.auth().signOut(); }catch(_){} throw e; }   // لو الحفظ فشل، نمسح حساب الدخول عشان الاسم ما يتحجزش
+      await sec.auth().signOut();
       return id;
     },
     async get(col,id){ const d=await fs.collection(col).doc(id).get(); return d.exists?fromDoc(d):null; },
