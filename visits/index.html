@@ -708,7 +708,7 @@ function actItem(c,admin){
     ${c.nextVisitAt||c.lastContactAt?`<div class="small muted" style="margin-top:6px">${c.nextVisitAt?`<span style="color:${due?'var(--red)':'var(--blue)'}">${ic('cal',13,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}${c.lastContactAt?' · آخر تواصل '+ago(c.lastContactAt):''}</div>`:''}
     ${c.contactNote?`<div class="small" style="margin-top:4px;color:#555">“${esc(c.contactNote)}”</div>`:''}
     ${admin?'':`<div class="btns" style="margin-top:10px">
-      ${ph?`<a class="btn sm sec2" href="tel:+${ph}" data-act="callLog" data-id="${c.id}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener">${ic('wa',16)} واتساب</a>`:''}
+      ${ph?`<a class="btn sm sec2" href="tel:+${ph}" data-act="tapLog" data-k="call" data-id="${c.id}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener" data-act="tapLog" data-k="wa" data-id="${c.id}">${ic('wa',16)} واتساب</a>`:''}
       <button class="btn sm" data-act="contact" data-id="${c.id}">${ic('check',16)} النتيجة</button></div>`}
   </div>`;
 }
@@ -1056,7 +1056,7 @@ async function openCust(id){
       <dt>الموقع</dt><dd>${c.lat?`<a href="https://www.google.com/maps?q=${c.lat},${c.lng}" target="_blank" rel="noopener" style="color:var(--g)">مسجّل · افتح الخريطة</a>`:'لسه ما اتسجلش (بيتسجل مع أول زيارة)'}</dd>
       ${c.notes?`<dt>ملاحظات</dt><dd>${esc(c.notes)}</dd>`:''}
     </dl></div>
-    ${mine?`<div class="btns" style="margin-top:12px">${ph?`<a class="btn sm sec2" href="tel:+${ph}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener">${ic('wa',16)} واتساب</a>`:''}<button class="btn sm" data-act="visitCust" data-id="${c.id}">${ic('pin',16)} زيارة</button></div>`:''}
+    ${mine?`<div class="btns" style="margin-top:12px">${ph?`<a class="btn sm sec2" href="tel:+${ph}" data-act="tapLog" data-k="call" data-id="${c.id}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener" data-act="tapLog" data-k="wa" data-id="${c.id}">${ic('wa',16)} واتساب</a>`:''}<button class="btn sm" data-act="visitCust" data-id="${c.id}">${ic('pin',16)} زيارة</button></div>`:''}
     ${isAdmin()&&!S.viewAs&&c.ownerUid?`<div class="btns" style="margin-top:10px"><button class="btn sm gold" data-act="newTask" data-id="${c.id}">${ic('pinpaper',16)} مهمة للمندوب</button></div>`:''}
     ${ctasks.length?`<div class="sec"><h3>المهام</h3><span class="cnt">${ctasks.length}</span></div>${ctasks.sort(taskSort).map(t=>taskItem(t,{showRep:isMeAdmin()&&!S.viewAs,canDo:!(isMeAdmin()&&!S.viewAs)})).join('')}`:''}
     <div class="sec"><h3>التعليقات</h3>${cms.length?`<span class="cnt">${cms.length}</span>`:''}</div>
@@ -1065,7 +1065,7 @@ async function openCust(id){
     ${isAdmin()&&!S.viewAs?`<div class="fld"><label>نقل العميل لمندوب تاني</label><select class="inp" data-chg="moveCust" data-id="${c.id}">${reps().map(r=>`<option value="${r.id}" ${c.ownerUid===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select></div>`:''}
     <div class="sec"><h3>الزيارات</h3><span class="cnt">${vs.length}</span></div>
     ${vs.length?vs.map(v=>visitItem(v,isAdmin())).join(''):'<div class="card empty" style="padding:16px">لسه مفيش زيارات</div>'}
-    ${contacts.length?`<div class="sec"><h3>سجل التواصل</h3></div><div class="card">${contacts.map(x=>`<div style="padding:6px 0;border-bottom:1px solid #F1EDE3"><span class="badge ${(ACT_STATUS[x.outcome]||[])[1]||''}">${esc(x.outcome)}</span> <span class="small muted">${fWhen(x.createdAt)} · ${esc(x.repName||'')}${x.byAdmin?' (سجّلها '+esc(x.byAdmin)+')':''}</span>${x.note?`<div class="small">${esc(x.note)}</div>`:''}</div>`).join('')}</div>`:''}`);
+    ${contacts.length?`<div class="sec"><h3>سجل التواصل</h3></div><div class="card">${contacts.map(x=>`<div style="padding:6px 0;border-bottom:1px solid #F1EDE3">${x.kind==='tap'?`<span class="badge ${x.tap==='wa'?'':'blue'}">${ic(x.tap==='wa'?'wa':'phone',12,2)} ${x.tap==='wa'?'فتح واتساب':'ضغط اتصال'}</span>`:`<span class="badge ${(ACT_STATUS[x.outcome]||[])[1]||''}">${esc(x.outcome)}</span>`} <span class="small muted">${fWhen(x.createdAt)} · ${esc(x.repName||'')}${x.byAdmin?' (سجّلها '+esc(x.byAdmin)+')':''}</span>${x.note?`<div class="small">${esc(x.note)}</div>`:''}</div>`).join('')}</div>`:''}`);
 }
 
 /* ---- نتيجة تواصل (تنشيط) ---- */
@@ -1423,6 +1423,14 @@ async function adminTasksCard(){
   return `<button class="it" data-act="openTasks" style="margin-top:12px"><div class="avt" style="background:var(--gold)">${ic('pinpaper',20)}</div><div class="grow"><b>المهام</b><span class="meta">${open.length} مفتوحة${late.length?` · <span style="color:var(--red)">${late.length} متأخرة</span>`:''} · ${done.length} خلصت النهارده</span></div></button>`;
 }
 
+/* تسجيل الضغط على اتصال / واتساب في سجل العميل */
+const _taps={};
+function logTap(cid,kind){
+  const k=cid+kind; if(_taps[k] && Date.now()-_taps[k]<60000) return; _taps[k]=Date.now();
+  const c=custCache(cid); const who=actor();
+  API.add('contacts',{customerId:cid,customerName:c?c.name:'',repUid:who.id,repName:who.name,byAdmin:byAdminTag(),kind:'tap',tap:kind==='wa'?'wa':'call',outcome:kind==='wa'?'واتساب':'اتصال',note:'',next:'',createdAt:'__SV__'}).catch(e=>console.warn('tap log',e));
+}
+
 document.addEventListener('click',async e=>{
   const t=e.target.closest('[data-act],[data-tab]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.q=''; if(t.closest('.nav')||t.closest('main')) { closeSheet(true); } render(); window.scrollTo(0,0); return; }
@@ -1470,7 +1478,7 @@ document.addEventListener('click',async e=>{
     case 'openVisit': openVisit(d.id); break;
     case 'openCust': if(t.closest('.it')&&t.closest('.ov')) closeSheet(true); openCust(d.id); break;
     case 'contact': openContact(d.id); break;
-    case 'callLog': break;
+    case 'tapLog': logTap(d.id,d.k); break;
     case 'ctOut': S.ct.outcome=d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b===t)); break;
     case 'ctNext': S.ct.next= S.ct.next===d.v?'':d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b.dataset.v===S.ct.next)); $('#ctNextD').value=S.ct.next; break;
     case 'saveContact': saveContact(); break;
