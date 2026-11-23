@@ -381,13 +381,21 @@ function getLocation(onUpdate){
 }
 
 /* ================= طبقة البيانات ================= */
+function hardReload(){ try{ if(sessionStorage.getItem('mv_rl') && Date.now()-(+sessionStorage.getItem('mv_rl'))<20000) return; sessionStorage.setItem('mv_rl',Date.now()); }catch(e){} location.reload(); }
+window.addEventListener('unhandledrejection',e=>{ const m=String(e.reason&&e.reason.message||e.reason||''); if(/client has already been terminated|INTERNAL ASSERTION/i.test(m)) hardReload(); });
 const API = {};
 const TS_FIELDS = ['createdAt','updatedAt'];
 
 function liveAPI(){
   const app = firebase.initializeApp(FIREBASE_CONFIG);
   const auth = firebase.auth(), fs = firebase.firestore();
-  try{ fs.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}
+  // من غير كاش IndexedDB: على الآيفون لما التطبيق يروح للخلفية (مشاركة ملف مثلًا) الكاش ده كان بيقفل Firestore ("client has been terminated")
+  // بدله كاش سريع في الذاكرة لكل استعلام (Q) بيتمسح مع أي تعديل
+  const QC=new Map(), QTTL=60000;
+  const qkey=(col,f)=>col+'|'+JSON.stringify(f);
+  const dropCol=col=>{ for(const k of [...QC.keys()]) if(k.startsWith(col+'|')) QC.delete(k); };
+  const TO=(p,ms,msg)=>Promise.race([p, sleep(ms).then(()=>{ throw new Error(msg||'التحميل اتأخر، اتأكد من النت وحاول تاني'); })]);
+  const guard=e=>{ const m=String(e&&e.message||e); if(/terminated|INTERNAL ASSERTION|IndexedDB/i.test(m)) { hardReload(); } throw e; };
   const SV = () => firebase.firestore.FieldValue.serverTimestamp();
   const fromDoc = d => { const o=d.data()||{}; for(const k in o){ if(o[k]&&typeof o[k].toMillis==='function') o[k]=o[k].toMillis(); } o.id=d.id; if(!o.createdAt&&d.metadata&&d.metadata.hasPendingWrites) o.createdAt=Date.now(); return o; };
   const toData = o => { const r={}; for(const k in o){ if(k==='id') continue; r[k]= o[k]==='__SV__'?SV():o[k]; } return r; };
@@ -410,16 +418,22 @@ function liveAPI(){
       await sec.auth().signOut();
       return id;
     },
-    async get(col,id){ const d=await fs.collection(col).doc(id).get(); return d.exists?fromDoc(d):null; },
-    async query(col,filters=[]){
+    async get(col,id){ try{ const d=await TO(fs.collection(col).doc(id).get(),15000); return d.exists?fromDoc(d):null; }catch(e){ guard(e); } },
+    async query(col,filters=[],opt={}){
+      const k=qkey(col,filters), hit=QC.get(k);
+      if(!opt.fresh && hit && Date.now()-hit.t<QTTL) return hit.v.slice();
       let q=fs.collection(col);
       for(const [f,op,v] of filters) q=q.where(f,op, TS_FIELDS.includes(f)&&typeof v==='number'?firebase.firestore.Timestamp.fromMillis(v):v);
-      const s=await q.get(); return s.docs.map(fromDoc);
+      try{
+        const s=await TO(q.get(),15000); const v=s.docs.map(fromDoc);
+        QC.set(k,{t:Date.now(),v}); return v.slice();
+      }catch(e){ if(hit) return hit.v.slice(); guard(e); }
     },
-    async add(col,data,id){ const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); return {id:ref.id,saved}; },
-    async update(col,id,patch){ const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); return {saved}; },
-    async batchAdd(col,rows){ for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } },
-    async remove(col,id){ await fs.collection(col).doc(id).delete(); },
+    clearCache(col){ if(col) dropCol(col); else QC.clear(); },
+    async add(col,data,id){ dropCol(col); const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); dropCol(col); return {id:ref.id,saved}; },
+    async update(col,id,patch){ dropCol(col); const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); dropCol(col); return {saved}; },
+    async batchAdd(col,rows){ dropCol(col); for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } dropCol(col); },
+    async remove(col,id){ dropCol(col); await fs.collection(col).doc(id).delete(); dropCol(col); },
     async addToken(uid,tok){ await fs.collection('users').doc(uid).update({fcmTokens:firebase.firestore.FieldValue.arrayUnion(tok),notifOn:true,notifAt:Date.now()}); }
   };
 }
@@ -445,6 +459,7 @@ function demoAPI(){
     async update(col,id,patch){ Object.assign(db[col][id],fix(patch)); save(); return {saved:true}; },
     async batchAdd(col,rows){ rows.forEach(r=>{ (db[col]=db[col]||{})[uid12()]=fix(r); }); save(); },
     async remove(col,id){ delete db[col][id]; save(); },
+    clearCache(){ },
     async addToken(){ },
     reset(){ try{ localStorage.removeItem(KEY); }catch(e){} location.reload(); },
     _db:()=>db
@@ -1335,7 +1350,7 @@ async function openTasksAdmin(){
 /* ---------- الجرس (الإشعارات) ---------- */
 async function myNotifs(){
   const to=isMeAdmin()?[S.me.id,ADMINS]:[S.me.id];
-  const l=await API.query('notifs',[['toUid','in',to]]);
+  const l=await API.query('notifs',[['toUid','in',to]],{fresh:true});
   return l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 }
 function isRead(x){ return x.toUid===ADMINS ? (x.readBy||[]).includes(S.me.id) : !!x.read; }
@@ -1413,7 +1428,7 @@ function startHeartbeat(){
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) beat(); });
 }
 async function refreshOnline(){
-  try{ S.users=await API.query('users'); }catch(e){ return; }
+  try{ S.users=await API.query('users',[],{fresh:true}); }catch(e){ return; }
   const n=S.users.filter(u=>u.id!==S.me.id && u.lastSeen && Date.now()-u.lastSeen<ONLINE_MS).length;
   const b=$('#onlineN'); if(b) b.textContent=n;
   const w=$('#onlineBtn'); if(w) w.classList.toggle('live',n>0);
@@ -1481,7 +1496,7 @@ document.addEventListener('click',async e=>{
     case 'logout': closeSheet(true); await API.logout(); break;
     case 'account': openAccount(); break;
     case 'changePw': { const p=$('#npw').value; if(p.length<6){ toast('6 حروف أو أرقام على الأقل'); return; } try{ await API.changePassword(p); toast('اتغيرت كلمة المرور'); closeSheet(); }catch(err){ toast(err.code==='auth/requires-recent-login'?'اخرج وادخل تاني الأول وبعدين غيّرها':'مشكلة: '+(err.message||err),4000); } break; }
-    case 'reload': renderTab(); break;
+    case 'reload': API.clearCache(); renderTab(); break;
     case 'closeSheet': closeSheet(); break;
     case 'delCust': if(!isAdmin()) return; closeSheet(true); openDelCust(d.id); break;
     case 'doDelCust': if(!isAdmin()) return; doDelCust(d.id,t); break;
@@ -1550,7 +1565,7 @@ document.addEventListener('change',async e=>{
 });
 let qT; document.addEventListener('input',e=>{ if(e.target.id==='q'){ clearTimeout(qT); const v=e.target.value; qT=setTimeout(()=>{ S.q=v; const pos=e.target.selectionStart; renderTab().then(()=>{ const q=$('#q'); if(q){ q.focus(); try{q.setSelectionRange(pos,pos);}catch(_){} } }); },300); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.target.id==='lp'||e.target.id==='lu')){ const b=document.querySelector('[data-act="login"]'); b&&b.click(); } });
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&S.me&&!$('#ov')&&Date.now()-(S._lastR||0)>60000){ S._lastR=Date.now(); renderTab(); } });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ S._hidAt=Date.now(); return; } if(S.me&&!$('#ov')&&Date.now()-(S._hidAt||Date.now())>60000){ API.clearCache(); renderTab(); } });
 
 boot();
 </script>
