@@ -118,7 +118,8 @@ main{padding:14px 14px calc(var(--safe-b) + 100px);max-width:760px;margin:0 auto
 .att1 button{background:#fff;color:#0A5434;border:1px solid #BFDCCB;border-radius:999px;padding:3px 11px;font-size:12px}
 .att2{display:flex;align-items:center;gap:8px;background:#fff;color:#5F5A4E;border:1px solid #E6E0D2;border-radius:999px;padding:6px 12px;margin:2px 0 12px;font-size:12.5px}
 .dot.red{background:#E0483A}
-.attc{padding:4px 12px}.attc .ar{padding:9px 0;border-bottom:1px solid #F1EDE3;gap:8px;align-items:center}.attc .ar:last-child{border-bottom:0}
+.attc{padding:4px 12px}.attc .ar{padding:9px 0;border-bottom:1px solid #F1EDE3}.attc .ar:last-child{border-bottom:0}
+.attv{margin:6px 18px 0 0;border-inline-start:2px solid #E6E0D2;padding-inline-start:10px}.attv button{display:block;width:100%;text-align:start;font-size:12.5px;color:#3D3A33;padding:3px 0}.attv span{color:#7A7466;margin-inline-end:8px;font-size:11.5px}.attv i{font-style:normal;color:#7A7466}
 .ib2{width:30px;height:30px;border-radius:9px;background:var(--g3);color:var(--g);display:flex;align-items:center;justify-content:center}
 .badge.gold{background:var(--gold2);color:#8A6E1E}
 .badge.grey{background:#EEECE6;color:#6B6658}
@@ -1578,7 +1579,9 @@ async function attCard(vsToday){
   return `<div class="sec"><h3>حضور النهارده</h3></div><div class="card attc">${rows.map(({u,a})=>{
     const o=attOut(a), nv=vsToday.filter(v=>v.repUid===u.id).length;
     const cls=!a?'red':o?'':'on', txt=!a?'<span style="color:var(--red)">لسه ما بصمش</span>': o?`${fTime(a.inAt)} ← ${fTime(o.t)}${o.auto?' (تلقائي)':''}`:`${fTime(a.inAt)} · ${nv} ${nv===1?'زيارة':'زيارات'}`;
-    return `<div class="row ar"><i class="dot ${cls}"></i><div class="grow">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}</div><div class="small" style="color:#5F5A4E">${txt}</div>${a?`<button class="ib2" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',16)}</button>`:''}</div>`; }).join('')}</div>`;
+    const uv=vsToday.filter(v=>v.repUid===u.id).sort((x,y)=>x.createdAt-y.createdAt);
+    const sub=uv.length?`<div class="attv">${uv.slice(0,4).map(v=>`<button data-act="openVisit" data-id="${v.id}"><span>${fTime(v.createdAt)}</span>${esc(v.customerName||'')}${v.result?` · <i>${esc(v.result)}</i>`:''}</button>`).join('')}${uv.length>4?`<button data-act="routeOf" data-id="${u.id}" style="color:var(--g)">+ ${uv.length-4} زيارات كمان · شوف اليوم كله</button>`:''}</div>`:'';
+    return `<div class="ar"><div class="row" style="gap:8px;align-items:center"><i class="dot ${cls}"></i><div class="grow">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}</div><div class="small" style="color:#5F5A4E">${txt}</div>${a?`<button class="ib2" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',16)}</button>`:''}</div>${sub}</div>`; }).join('')}</div>`;
 }
 /* نقاط البصمة على الخريطة */
 async function attMapPoints(rep,day){
