@@ -821,7 +821,7 @@ async function adminMap(m){
   <div class="chips" style="margin-top:6px">${[['all','كل المناديب'],...repChips.map(r=>[r.id,r.name])].map(([k,l])=>`<button class="chip ${rep===k?'on':''}" data-act="mapRep" data-v="${k}" ${k!=='all'?`style="${rep===k?`background:${repColor(k)};border-color:${repColor(k)}`:`border-color:${repColor(k)}55`}"`:''}>${esc(l)}</button>`).join('')}</div>
   <div id="map" style="margin-top:10px"></div>
   <div class="small muted" style="margin:8px 4px">${rep==='all'?'اختار مندوب عشان تشوف خط سيره بالترتيب':'الخط بيوصل زياراته بالترتيب حسب وقت التسجيل'}</div>
-  ${attX?attTimeline(attX):''}
+  ${attX?attTimeline(attX,vs):''}
   ${rep!=='all'&&vs.length?routeTimeline(vs): vs.length? `<div class="sec"><h3>${vs.length} زيارة</h3></div>`+vs.slice().reverse().map(v=>visitItem(v,true)).join('') : `<div class="card empty">${ic('map',30)}مفيش زيارات في اليوم ده</div>`}`;
   drawMap(vs,rep);
 }
@@ -1518,7 +1518,8 @@ function attOut(a){
   if(!a||!a.inAt) return null;
   if(a.outAt) return {t:a.outAt,auto:false};
   const ps=attPts(a), last=ps.length?ps[ps.length-1].t:a.inAt;
-  if(a.day<today() || (a.day===today() && new Date().getHours()>=23)) return {t:last,auto:true};
+  const cut=+new Date(a.day+'T23:00:00');   // الانصراف التلقائي: بعد 11 بالليل، أو تاني يوم
+  if(a.day<today() || (Date.now()>=cut && a.inAt<cut)) return {t:last,auto:true};
   return null;
 }
 const hm = ms => { const m=Math.max(0,Math.round(ms/6e4)); return Math.floor(m/60)+' س '+(m%60)+' د'; };
@@ -1588,11 +1589,16 @@ async function attMapPoints(rep,day){
   if(!o && ps.length && Date.now()-ps[ps.length-1].t>ATT_GAP && day===today()) gaps.push([ps[ps.length-1].t,Date.now()]);
   return {a,ps,gaps,o};
 }
-function attTimeline(x){
+function attTimeline(x,vs=[]){
   if(!x) return '';
   const {a,ps,gaps,o}=x;
+  const ev=[{t:a.inAt,h:`<b>حضور</b> · بصمة`,c:'#0A6B43'}]
+    .concat(vs.map(v=>({t:v.createdAt,h:`<b>زيارة</b> · ${esc(v.customerName||'')}${v.result?' · '+esc(v.result):''}${v.flagged?' · <span style="color:var(--red)">ملاحظة</span>':''}`,c:repColor(v.repUid),id:v.id})))
+    .concat(gaps.map(g=>({t:g[0],h:`<span style="color:var(--amber)">مفيش مواقع لحد ${fTime(g[1])}</span>`,c:'#B7791F'})))
+    .concat(o?[{t:o.t,h:`<b>انصراف</b>${o.auto?' (تلقائي)':''}`,c:'#7A7466'}]:[]).sort((x,y)=>x.t-y.t);
+  const seq=`<div class="sec"><h3>تسلسل اليوم</h3></div><div class="card" style="padding:6px 12px">${ev.map(e=>`<div class="row" style="gap:10px;padding:8px 0;border-bottom:1px solid #F1EDE3;align-items:center"><span style="min-width:62px;font-size:12px;color:#5F5A4E">${fTime(e.t)}</span><i style="width:9px;height:9px;border-radius:50%;background:${e.c};flex:none"></i><div class="grow" style="font-size:13.5px">${e.id?`<button data-act="openVisit" data-id="${e.id}" style="text-align:start;width:100%">${e.h}</button>`:e.h}</div></div>`).join('')}</div>`;
   return `<div class="card" style="margin-top:10px"><div class="row" style="gap:8px">${ic('finger',18)}<div class="grow"><b style="font-weight:500">البصمة</b><div class="small muted">حضور ${fTime(a.inAt)}${o?` · انصراف ${fTime(o.t)}${o.auto?' (تلقائي)':''} · ${hm(o.t-a.inAt)}`:' · لسه في الدوام'} · ${ps.length} نقطة موقع</div></div></div>
-  ${gaps.length?`<div class="small" style="margin-top:8px;color:var(--amber)">${gaps.map(g=>`من ${fTime(g[0])} لـ ${fTime(g[1])} مفيش مواقع (التطبيق كان مقفول)`).join('<br>')}</div>`:''}</div>`;
+  ${gaps.length?`<div class="small" style="margin-top:8px;color:var(--amber)">${gaps.map(g=>`من ${fTime(g[0])} لـ ${fTime(g[1])} مفيش مواقع (التطبيق كان مقفول)`).join('<br>')}</div>`:''}</div>${seq}`;
 }
 
 document.addEventListener('click',async e=>{
