@@ -355,6 +355,7 @@ const I = {
   building:'<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M2 21h20M8 8h3M8 12h3M8 16h3"/>',
   copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
   flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
   bell:'<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/>',
   pinpaper:'<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 16v5"/>'
@@ -1068,7 +1069,8 @@ async function openCust(id){
     <div class="sec"><h3>التعليقات</h3>${cms.length?`<span class="cnt">${cms.length}</span>`:''}</div>
     <div id="cmList">${commentsHtml(cms)}</div>
     <div class="cmbox"><textarea class="inp" id="cmIn" placeholder="${isMeAdmin()?'اكتب توجيه أو سؤال للمندوب…':'اكتب رد أو تحديث للمدير…'}"></textarea><button class="btn sm" id="cmBtn" data-act="sendComment" data-id="${c.id}" style="width:auto;padding:0 14px;height:44px">إرسال</button></div>
-    ${isAdmin()&&!S.viewAs?`<div class="fld"><label>نقل العميل لمندوب تاني</label><select class="inp" data-chg="moveCust" data-id="${c.id}">${reps().map(r=>`<option value="${r.id}" ${c.ownerUid===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select></div>`:''}
+    ${isAdmin()&&!S.viewAs?`<div class="fld"><label>إدارة العميل</label><select class="inp" data-chg="moveCust" data-id="${c.id}">${reps().map(r=>`<option value="${r.id}" ${c.ownerUid===r.id?'selected':''}>${c.ownerUid===r.id?'عند: ':'نقل إلى: '}${esc(r.name)}</option>`).join('')}</select>
+      <button class="btn red" style="margin-top:10px" data-act="delCust" data-id="${c.id}">${ic('trash',18)} حذف العميل</button></div>`:''}
     <div class="sec"><h3>الزيارات</h3><span class="cnt">${vs.length}</span></div>
     ${vs.length?vs.map(v=>visitItem(v,isAdmin())).join(''):'<div class="card empty" style="padding:16px">لسه مفيش زيارات</div>'}
     ${contacts.length?`<div class="sec"><h3>سجل التواصل</h3></div><div class="card">${contacts.map(x=>`<div style="padding:6px 0;border-bottom:1px solid #F1EDE3">${x.kind==='tap'?`<span class="badge ${x.tap==='wa'?'':'blue'}">${ic(x.tap==='wa'?'wa':'phone',12,2)} ${x.tap==='wa'?'فتح واتساب':'ضغط اتصال'}</span>`:`<span class="badge ${(ACT_STATUS[x.outcome]||[])[1]||''}">${esc(x.outcome)}</span>`} <span class="small muted">${fWhen(x.createdAt)} · ${esc(x.repName||'')}${x.byAdmin?' (سجّلها '+esc(x.byAdmin)+')':''}</span>${x.note?`<div class="small">${esc(x.note)}</div>`:''}</div>`).join('')}</div>`:''}`);
@@ -1442,6 +1444,24 @@ function logTap(cid,kind){
   API.add('contacts',{customerId:cid,customerName:c?c.name:'',repUid:who.id,repName:who.name,byAdmin:byAdminTag(),kind:'tap',tap:kind==='wa'?'wa':'call',outcome:kind==='wa'?'واتساب':'اتصال',note:'',next:'',createdAt:'__SV__'}).catch(e=>console.warn('tap log',e));
 }
 
+/* حذف عميل (للمديرين بس) */
+function openDelCust(id){
+  const c=custCache(id); if(!c) return;
+  const rep=userById(c.ownerUid);
+  sheet('حذف العميل',`<div class="warnbox red" style="margin-top:12px">${ic('warn',18)}<div>هتمسح <b style="font-weight:500">${esc(c.name)}</b>${rep?' من عند '+esc(rep.name):''} نهائيًا، ومعاه تعليقاته ومهامه وسجل التواصل بتاعه. الحذف مالوش رجوع.<br>الزيارات القديمة اللي اتسجلت عنده بتفضل محفوظة في سجل الزيارات.</div></div>`,
+    `<div class="btns"><button class="btn sec2" data-act="closeSheet">إلغاء</button><button class="btn red" data-act="doDelCust" data-id="${id}">${ic('trash',18)} احذف نهائيًا</button></div>`);
+}
+async function doDelCust(id,btn){
+  btn.disabled=true;
+  try{
+    const [cm,ts,ct,nf]=await Promise.all([API.query('comments',[['customerId','==',id]]),API.query('tasks',[['customerId','==',id]]),API.query('contacts',[['customerId','==',id]]),API.query('notifs',[['customerId','==',id]]).catch(()=>[])]);
+    await Promise.all([...cm.map(x=>API.remove('comments',x.id)),...ts.map(x=>API.remove('tasks',x.id)),...ct.map(x=>API.remove('contacts',x.id)),...nf.map(x=>API.remove('notifs',x.id).catch(()=>{}))]);
+    await API.remove('customers',id);
+    ['_cust','_allCust','_custMine'].forEach(k=>{ if(S[k]) S[k]=S[k].filter(x=>x.id!==id); }); if(S._openC&&S._openC.id===id) S._openC=null;
+    closeSheet(true); toast('اتمسح العميل'); renderTab();
+  }catch(e){ btn.disabled=false; toast('مقدرش أمسح: '+(e.message||e),4000); }
+}
+
 document.addEventListener('click',async e=>{
   const t=e.target.closest('[data-act],[data-tab]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.q=''; if(t.closest('.nav')||t.closest('main')) { closeSheet(true); } render(); window.scrollTo(0,0); return; }
@@ -1462,6 +1482,8 @@ document.addEventListener('click',async e=>{
     case 'changePw': { const p=$('#npw').value; if(p.length<6){ toast('6 حروف أو أرقام على الأقل'); return; } try{ await API.changePassword(p); toast('اتغيرت كلمة المرور'); closeSheet(); }catch(err){ toast(err.code==='auth/requires-recent-login'?'اخرج وادخل تاني الأول وبعدين غيّرها':'مشكلة: '+(err.message||err),4000); } break; }
     case 'reload': renderTab(); break;
     case 'closeSheet': closeSheet(); break;
+    case 'delCust': if(!isAdmin()) return; closeSheet(true); openDelCust(d.id); break;
+    case 'doDelCust': if(!isAdmin()) return; doDelCust(d.id,t); break;
     case 'openBell': openBell(); break;
     case 'openNotif': openNotif(d.id); break;
     case 'enablePush': enablePush(t); break;
