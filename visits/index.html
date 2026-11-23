@@ -841,9 +841,10 @@ async function adminAct(m){
     <div class="row"><div class="avt" style="background:var(--gold)">${ic('bolt',20)}</div><div class="grow"><b style="font-weight:500">تنشيط الداتا القديمة</b><div class="small muted">${cs.length} عميل قديم${un?' · '+un+' غير موزع':''}</div></div></div>
     <div class="btns" style="margin-top:12px"><button class="btn gold" data-act="import">${ic('up',18)} رفع ملف عملاء</button><button class="btn ghost" data-act="exportAct">${ic('down',18)} Excel</button></div></div>
   <div class="sec"><h3>تقدّم كل مندوب</h3></div>
-  ${per.map(x=>`<button class="rep" style="display:block;width:100%;text-align:start" data-act="actRep" data-v="${x.r.id}"><div class="top"><div class="avt" style="background:${repColor(x.r.id)}">${esc(initials(x.r.name))}</div><div class="grow"><b style="font-weight:500">${esc(x.r.name)}</b><div class="small muted">اتواصل مع ${x.done} من ${x.n} · زار ${x.vis} · مهتم ${x.int}</div></div><div class="big" style="font-size:18px">${x.n?Math.round(x.done*100/x.n):0}%</div></div><div class="bar"><i style="width:${x.n?x.done*100/x.n:0}%;background:${repColor(x.r.id)}"></i></div></button>`).join('')}
-  <div class="sec"><h3>العملاء</h3></div>
-  <select class="inp" data-chg="actRep" style="padding:9px 12px">${[['all','كل المناديب'],...rs.map(r=>[r.id,r.name])].map(([k,l])=>`<option value="${k}" ${S.actRep===k?'selected':''}>${esc(l)}</option>`).join('')}</select>
+  ${per.map(x=>{ const on=S.actRep===x.r.id, col=repColor(x.r.id); return `<button class="rep" style="display:block;width:100%;text-align:start;${on?`border:2px solid ${col};background:${col}14;box-shadow:0 0 0 3px ${col}22`:''}" data-act="actRep" data-v="${on?'all':x.r.id}"><div class="top"><div class="avt" style="background:${repColor(x.r.id)}">${esc(initials(x.r.name))}</div><div class="grow"><b style="font-weight:500">${esc(x.r.name)}</b>${on?` <span class="badge" style="background:${col};color:#fff">${ic('check',12,2.4)} متفلتر</span>`:''}<div class="small muted">اتواصل مع ${x.done} من ${x.n} · زار ${x.vis} · مهتم ${x.int}</div></div><div class="big" style="font-size:18px">${x.n?Math.round(x.done*100/x.n):0}%</div></div><div class="bar"><i style="width:${x.n?x.done*100/x.n:0}%;background:${repColor(x.r.id)}"></i></div></button>`; }).join('')}
+  <div class="sec" id="actCustSec" style="scroll-margin-top:90px"><h3>العملاء</h3></div>
+  ${S.actRep&&S.actRep!=='all'&&userById(S.actRep)?`<div class="row" style="background:${repColor(S.actRep)};color:#fff;border-radius:14px;padding:10px 12px;margin-bottom:8px">${ic('check',18,2.2)}<div class="grow" style="font-size:14px">بتشوف عملاء <b style="font-weight:500">${esc(userById(S.actRep).name)}</b> بس</div><button class="btn sm" style="width:auto;background:rgba(255,255,255,.2);color:#fff" data-act="actRep" data-v="all">✕ عرض الكل</button></div>`:''}
+  <select class="inp" data-chg="actRep" style="padding:9px 12px;${S.actRep&&S.actRep!=='all'?`border:2px solid ${repColor(S.actRep)};font-weight:500`:''}">${[['all','كل المناديب'],...rs.map(r=>[r.id,r.name])].map(([k,l])=>`<option value="${k}" ${S.actRep===k?'selected':''}>${esc(l)}</option>`).join('')}</select>
   <div id="actList"></div>`;
   actBody($('#actList'),cs,true);
 }
@@ -1517,7 +1518,7 @@ document.addEventListener('click',async e=>{
     case 'saveContact': saveContact(); break;
     case 'setF': S.filt[d.k]=d.v; renderTab(); break;
     case 'actF': S.actFilter=d.v; renderTab(); break;
-    case 'actRep': S.actRep=d.v; renderTab(); break;
+    case 'actRep': { const fromRow=!!t.closest('.rep'); S.actRep=d.v; renderTab().then(()=>{ if(fromRow&&d.v!=='all'){ const sec=$('#actCustSec'); if(sec) sec.scrollIntoView({behavior:'smooth',block:'start'}); } }); break; }
     case 'period': S.period=d.v; renderTab(); break;
     case 'toggleFlag': S.filt.flag=!S.filt.flag; renderTab(); break;
     case 'goFlagged': S.tab='visits'; S.filt.flag=true; S.filt.av=S.period==='yesterday'?'yesterday':S.period; render(); break;
