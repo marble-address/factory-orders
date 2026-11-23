@@ -83,6 +83,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // بصمة الحضور: مستند لكل مندوب في اليوم (uid_day)
+    match /attendance/{id} {
+      allow read: if isAdmin() || (isUser() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin() || (isRep() && request.resource.data.uid == request.auth.uid
+                                     && id == request.auth.uid + '_' + request.resource.data.day);
+      allow update: if isAdmin()
+                    || (isRep() && resource.data.uid == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'outAt', 'outLoc']));
+      allow delete: if isAdmin();
+    }
+
     // أي حاجة تانية مقفولة
     match /{document=**} {
       allow read, write: if false;

@@ -110,6 +110,16 @@ main{padding:14px 14px calc(var(--safe-b) + 100px);max-width:760px;margin:0 auto
 .cmbox textarea{min-height:44px;height:44px;resize:none}
 .task.done{opacity:.75}
 .lnk2{color:var(--g);text-decoration:underline;font:inherit;padding:0}
+.att0{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px dashed var(--gold2);border-radius:14px;padding:8px 10px;margin:2px 0 12px}
+.att0 .ai{width:34px;height:34px;border-radius:50%;background:var(--gold3);color:var(--gold);display:flex;align-items:center;justify-content:center;flex:none}
+.att0 b{display:block;font-weight:500;font-size:14px}.att0 small{font-size:11.5px;color:#7A7466}
+.attb{background:var(--g);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px}
+.att1{display:flex;align-items:center;gap:8px;background:#E8F3EC;color:#0A5434;border-radius:999px;padding:5px 6px 5px 12px;margin:2px 0 12px;font-size:12.5px}
+.att1 button{background:#fff;color:#0A5434;border:1px solid #BFDCCB;border-radius:999px;padding:3px 11px;font-size:12px}
+.att2{display:flex;align-items:center;gap:8px;background:#fff;color:#5F5A4E;border:1px solid #E6E0D2;border-radius:999px;padding:6px 12px;margin:2px 0 12px;font-size:12.5px}
+.dot.red{background:#E0483A}
+.attc{padding:4px 12px}.attc .ar{padding:9px 0;border-bottom:1px solid #F1EDE3;gap:8px;align-items:center}.attc .ar:last-child{border-bottom:0}
+.ib2{width:30px;height:30px;border-radius:9px;background:var(--g3);color:var(--g);display:flex;align-items:center;justify-content:center}
 .badge.gold{background:var(--gold2);color:#8A6E1E}
 .badge.grey{background:#EEECE6;color:#6B6658}
 
@@ -358,6 +368,8 @@ const I = {
   trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
   bell:'<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+  finger:'<path d="M12 11v3a8 8 0 0 0 1 4M8 11a4 4 0 0 1 8 0v1M5 13a7 7 0 0 1 14-2M9 21a12 12 0 0 1-1-6M17 15v-1M16 19c.5-1 .9-2 1-3"/>',
+  pin:'<path d="M12 21s-6-5.5-6-11a6 6 0 1 1 12 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
   pinpaper:'<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 16v5"/>'
 };
 const ic = (n,s=20,w=1.7) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
@@ -430,6 +442,7 @@ function liveAPI(){
       }catch(e){ if(hit) return hit.v.slice(); guard(e); }
     },
     clearCache(col){ if(col) dropCol(col); else QC.clear(); },
+    async arrayAdd(col,id,field,val){ dropCol(col); await settle(fs.collection(col).doc(id).update({[field]:firebase.firestore.FieldValue.arrayUnion(val)})); },
     async add(col,data,id){ dropCol(col); const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); dropCol(col); return {id:ref.id,saved}; },
     async update(col,id,patch){ dropCol(col); const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); dropCol(col); return {saved}; },
     async batchAdd(col,rows){ dropCol(col); for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } dropCol(col); },
@@ -460,6 +473,7 @@ function demoAPI(){
     async batchAdd(col,rows){ rows.forEach(r=>{ (db[col]=db[col]||{})[uid12()]=fix(r); }); save(); },
     async remove(col,id){ delete db[col][id]; save(); },
     clearCache(){ },
+    async arrayAdd(col,id,field,val){ const o=db[col][id]; (o[field]=o[field]||[]).push(val); save(); },
     async addToken(){ },
     reset(){ try{ localStorage.removeItem(KEY); }catch(e){} location.reload(); },
     _db:()=>db
@@ -512,7 +526,7 @@ function seedDemo(){
 /* ================= الحالة ================= */
 const S = { me:null, users:[], tab:'home', viewAs:null, period:'today', filt:{}, mapRep:'all', mapDay:today(), actFilter:'all', actRep:'all', q:'' };
 const isAdmin = () => S.me && S.me.role==='admin';
-const reps = () => S.users.filter(u=>u.role==='rep').sort((a,b)=>REPS_SEED.findIndex(r=>r.username===a.username)-REPS_SEED.findIndex(r=>r.username===b.username));
+const reps = () => S.users.filter(u=>u.role==='rep'&&!u.test).sort((a,b)=>REPS_SEED.findIndex(r=>r.username===a.username)-REPS_SEED.findIndex(r=>r.username===b.username));
 const userById = id => S.users.find(u=>u.id===id);
 const repColor = id => { const i=reps().findIndex(r=>r.id===id); return REP_COLORS[(i<0?7:i)%REP_COLORS.length]; };
 const subjectUid = () => S.viewAs ? S.viewAs.id : S.me.id;
@@ -640,7 +654,8 @@ function custItem(c,mode){
 /* ================= شاشات المندوب ================= */
 async function repHome(m){
   const uid=subjectUid(); const who=S.viewAs||S.me;
-  const [vs,cs,ts]=await Promise.all([visitsOf(uid),customersOf(uid),tasksFor(uid).catch(()=>[])]);
+  const [vs,cs,ts,att]=await Promise.all([visitsOf(uid),customersOf(uid),tasksFor(uid).catch(()=>[]),attOn(who)?attGet(uid,today()):null]);
+  S._att=att; if(attOn(who)) attTrack(!!(att&&att.inAt&&!attOut(att))); else attTrack(false);
   S._cust=cs; S._vis=vs; S._tasks=ts; const openT=ts.filter(t=>t.status==='open');
   const s0=startOfDay(), wk=periodRange('week')[0];
   const vToday=vs.filter(v=>v.createdAt>=s0).length, vWeek=vs.filter(v=>v.createdAt>=wk).length;
@@ -649,6 +664,7 @@ async function repHome(m){
   const h=new Date().getHours();
   m.innerHTML=`
   <div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(who.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
+  ${attOn(who)?attStrip(S._att):''}
   <div class="stats">
     <div class="st"><b>${vToday}</b><span>زيارات اليوم</span></div>
     <div class="st gold"><b>${vWeek}</b><span>زيارات الأسبوع</span></div>
@@ -758,6 +774,7 @@ async function adminHome(m){
     <div class="st ${dueAll?'warn':''}"><b>${dueAll}</b><span>متابعات متأخرة عند الفريق</span></div>
   </div>
   ${byRes.length?`<div class="card" style="margin-top:10px"><div class="small muted">نتايج الزيارات</div><div class="resbar">${byRes.map(([r,n])=>`<i style="width:${n*100/vs.length}%;background:${RES_COLORS[r]}"></i>`).join('')}</div><div class="legend">${byRes.map(([r,n])=>`<span><i style="background:${RES_COLORS[r]}"></i>${r} ${n}</span>`).join('')}</div></div>`:''}
+  ${attAdminView()?await attCard(await allVisitsSince(startOfDay())):''}
   ${await adminTasksCard()}
   <div class="sec"><h3>المناديب</h3><span class="cnt">${rs.length}</span></div>
   ${rs.map(r=>{ const rv=vs.filter(v=>v.repUid===r.id); const last=rv[0]; const fl=rv.filter(v=>v.flagged).length; const col=repColor(r.id);
@@ -798,10 +815,13 @@ async function adminMap(m){
   if(rep!=='all') vs=vs.filter(v=>v.repUid===rep);
   vs.sort((a,b)=>a.createdAt-b.createdAt);
   const days=[0,-1,-2,-3,-4,-5,-6].map(n=>addDays(n));
+  const attX = rep!=='all' ? await attMapPoints(rep,day).catch(()=>null) : null; S._attX=attX;
+  const repChips=reps().slice(); if(rep!=='all'&&!repChips.find(r=>r.id===rep)&&userById(rep)) repChips.push(userById(rep));
   m.innerHTML=`<div class="chips">${days.map(d=>`<button class="chip ${day===d?'on':''}" data-act="mapDay" data-v="${d}">${d===today()?'اليوم':d===addDays(-1)?'أمس':AR_DAYS[new Date(d+'T12:00').getDay()]}</button>`).join('')}</div>
-  <div class="chips" style="margin-top:6px">${[['all','كل المناديب'],...reps().map(r=>[r.id,r.name])].map(([k,l])=>`<button class="chip ${rep===k?'on':''}" data-act="mapRep" data-v="${k}" ${k!=='all'?`style="${rep===k?`background:${repColor(k)};border-color:${repColor(k)}`:`border-color:${repColor(k)}55`}"`:''}>${esc(l)}</button>`).join('')}</div>
+  <div class="chips" style="margin-top:6px">${[['all','كل المناديب'],...repChips.map(r=>[r.id,r.name])].map(([k,l])=>`<button class="chip ${rep===k?'on':''}" data-act="mapRep" data-v="${k}" ${k!=='all'?`style="${rep===k?`background:${repColor(k)};border-color:${repColor(k)}`:`border-color:${repColor(k)}55`}"`:''}>${esc(l)}</button>`).join('')}</div>
   <div id="map" style="margin-top:10px"></div>
   <div class="small muted" style="margin:8px 4px">${rep==='all'?'اختار مندوب عشان تشوف خط سيره بالترتيب':'الخط بيوصل زياراته بالترتيب حسب وقت التسجيل'}</div>
+  ${attX?attTimeline(attX):''}
   ${rep!=='all'&&vs.length?routeTimeline(vs): vs.length? `<div class="sec"><h3>${vs.length} زيارة</h3></div>`+vs.slice().reverse().map(v=>visitItem(v,true)).join('') : `<div class="card empty">${ic('map',30)}مفيش زيارات في اليوم ده</div>`}`;
   drawMap(vs,rep);
 }
@@ -828,7 +848,15 @@ async function drawMap(vs,rep){
     mk.bindPopup(`<div style="font-family:inherit;direction:rtl;text-align:right"><b>${esc(v.customerName)}</b><br>${esc(v.repName)} · ${fTime(v.createdAt)}<br>${esc(v.result||'')}${v.flagged?'<br><span style="color:#C0392B">'+esc((v.flags||[]).join('، '))+'</span>':''}</div>`);
     pts.push([v.lat,v.lng]);
   });
-  if(rep!=='all'&&pts.length>1) L.polyline(pts,{color:repColor(rep),weight:3,opacity:.75,dashArray:'6 6'}).addTo(map);
+  const ax=S._attX; let line=pts;
+  if(rep!=='all'&&ax&&ax.ps.length){
+    ax.ps.forEach(p=>{ const k=p.k==='in'?'حضور':p.k==='out'?'انصراف':'';
+      if(k) L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div class="pinmk" style="background:${p.k==='in'?'#0A6B43':'#7A7466'}"><span>${p.k==='in'?'▶':'■'}</span></div>`,iconSize:[28,28],iconAnchor:[14,28]})}).addTo(map).bindPopup(`<div style="direction:rtl;text-align:right"><b>${k}</b><br>${fTime(p.t)}</div>`);
+      else L.circleMarker([p.lat,p.lng],{radius:4,color:repColor(rep),weight:1,fillOpacity:.8}).addTo(map).bindPopup(`<div style="direction:rtl">${fTime(p.t)}</div>`); });
+    line=vs.map(v=>({t:v.createdAt,lat:v.lat,lng:v.lng})).concat(ax.ps).sort((x,y)=>x.t-y.t).map(p=>[p.lat,p.lng]);
+    ax.ps.forEach(p=>pts.push([p.lat,p.lng]));
+  }
+  if(rep!=='all'&&line.length>1) L.polyline(line,{color:repColor(rep),weight:3,opacity:.75,dashArray:'6 6'}).addTo(map);
   if(pts.length) map.fitBounds(pts,{padding:[40,40],maxZoom:15});
   setTimeout(()=>map.invalidateSize(),200);
 }
@@ -875,6 +903,7 @@ async function adminTeam(m){
     <div class="acts"><button data-act="viewAs" data-id="${r.id}">${ic('eye',16)} افتح شاشته</button><button data-act="editRep" data-id="${r.id}">${ic('user',16)} تعديل</button></div></div>`).join('')}
   ${pending.length?`<div class="sec"><h3>لسه ما اتعملش حسابهم</h3></div>${pending.map(r=>`<div class="rep"><div class="top"><div class="avt" style="background:#C9C2B0">${esc(initials(r.name))}</div><div class="grow"><b style="font-weight:500">${esc(r.name)}</b><div class="small muted">اسم المستخدم المقترح: <span dir="ltr">${r.username}</span></div></div><button class="btn sm" data-act="createRep" data-name="${esc(r.name)}" data-u="${r.username}">إنشاء الحساب</button></div></div>`).join('')}`:''}
   <div style="margin-top:14px"><button class="btn sec2" data-act="createRep">${ic('plus',18)} إضافة مندوب جديد</button></div>
+  ${attAdminView()?`<div class="sec"><h3>حساب التجربة</h3></div>${S.users.filter(u=>u.test).map(u=>`<div class="rep"><div class="top"><div class="avt" style="background:#9A8F78">${esc(initials(u.name))}</div><div class="grow"><b style="font-weight:500">${esc(u.name)}</b><div class="small muted">مش ظاهر في أرقام المناديب · البصمة شغالة عليه</div></div><button class="btn sm sec2" style="width:auto" data-act="viewAs" data-id="${u.id}">${ic('eye',16)} افتح شاشته</button></div></div>`).join('')||`<button class="btn sec2" data-act="mkTestRep">${ic('plus',18)} اعمل حساب «مندوب تجربة»</button>`}`:''}
   <div class="sec"><h3>حسابات المديرين</h3><span class="cnt">${S.users.filter(u=>u.role==='admin').length}</span></div>
   ${S.users.filter(u=>u.role==='admin').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:var(--gold)">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مدير المشاريع')} · <span dir="ltr">${esc(a.username)}</span>${a.id===S.me.id?' · إنت':''}</div></div>${a.id!==S.me.id?`<button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button>`:''}</div></div>`).join('')}
   <div style="margin-top:10px"><button class="btn sec2" data-act="createAdminAcc">${ic('key',18)} إضافة مدير بكل الصلاحيات</button></div>
@@ -1478,6 +1507,94 @@ async function doDelCust(id,btn){
   }catch(e){ btn.disabled=false; toast('مقدرش أمسح: '+(e.message||e),4000); }
 }
 
+/* ================= بصمة الحضور (تجربة: شاشة محمود + حساب التجربة) ================= */
+const ATT_EVERY = 5*60*1000, ATT_GAP = 15*60*1000;
+const attAdminView = () => !!(S.me && S.me.username==='mahmoud' && !S.viewAs);
+const attOn = u => !!(u && u.attendance && u.active!==false);
+const attId = (uid,day) => uid+'_'+day;
+async function attGet(uid,day){ try{ return await API.get('attendance',attId(uid,day)); }catch(e){ return null; } }
+function attPts(a){ return (a&&a.points||[]).slice().sort((x,y)=>x.t-y.t); }
+function attOut(a){
+  if(!a||!a.inAt) return null;
+  if(a.outAt) return {t:a.outAt,auto:false};
+  const ps=attPts(a), last=ps.length?ps[ps.length-1].t:a.inAt;
+  if(a.day<today() || (a.day===today() && new Date().getHours()>=23)) return {t:last,auto:true};
+  return null;
+}
+const hm = ms => { const m=Math.max(0,Math.round(ms/6e4)); return Math.floor(m/60)+' س '+(m%60)+' د'; };
+function attStrip(a){
+  if(!a||!a.inAt) return `<div class="att0"><div class="ai">${ic('finger',19)}</div><div class="grow"><b>ابدأ دوامك</b><small>اضغط للبصمة وتسجيل موقعك</small></div><button class="attb" data-act="attIn">بصمة</button></div>`;
+  const o=attOut(a);
+  if(!o) return `<div class="att1">${ic('finger',17)}<span class="grow">في الدوام من ${fTime(a.inAt)} · ${hm(Date.now()-a.inAt)}</span><i class="dot on"></i><button data-act="attEnd">إنهاء</button></div>`;
+  return `<div class="att2">${ic('check',15)}<span class="grow">دوام النهارده: ${fTime(a.inAt)} ← ${fTime(o.t)}${o.auto?' (انصراف تلقائي)':''} · ${hm(o.t-a.inAt)}</span></div>`;
+}
+async function attIn(btn){
+  const who=actor(); if(btn){ btn.disabled=true; btn.textContent='بيحدد موقعك…'; }
+  const r=await getLocation();
+  if(r.err){ toast(r.err,4500); if(btn){ btn.disabled=false; btn.textContent='بصمة'; } return; }
+  const now=Date.now(), p={t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'in'};
+  await API.add('attendance',{uid:who.id,name:who.name,day:today(),inAt:now,inLoc:{lat:r.lat,lng:r.lng,acc:r.acc},points:[p],byAdmin:byAdminTag(),createdAt:'__SV__'},attId(who.id,today()));
+  toast('اتسجلت بصمتك ✓ '+fTime(now)); attTrack(true); renderTab();
+}
+function attEndAsk(){
+  sheet('إنهاء الدوام',`<div class="small muted" style="margin-top:10px">هيتسجل وقت انصرافك وموقعك دلوقتي.</div>`,`<div class="btns"><button class="btn sec2" data-act="closeSheet">إلغاء</button><button class="btn" data-act="attEndGo">إنهاء الدوام</button></div>`);
+}
+async function attEnd(btn){
+  const who=actor(); btn.disabled=true; btn.textContent='بيحدد موقعك…';
+  const r=await getLocation(); const now=Date.now(); const patch={outAt:now};
+  if(!r.err) patch.outLoc={lat:r.lat,lng:r.lng,acc:r.acc};
+  await API.update('attendance',attId(who.id,today()),patch);
+  if(!r.err) await API.arrayAdd('attendance',attId(who.id,today()),'points',{t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'out'}).catch(()=>{});
+  attTrack(false); closeSheet(true); toast('اتسجل انصرافك'); renderTab();
+}
+let _attT=null, _attBusy=false;
+function attTrack(on){
+  clearInterval(_attT); _attT=null; if(!on) return;
+  _attT=setInterval(attTick,ATT_EVERY);
+}
+async function attTick(){
+  if(_attBusy||document.hidden) return; const who=S.viewAs||S.me; if(!attOn(who)) { attTrack(false); return; }
+  _attBusy=true;
+  try{
+    const a=await attGet(who.id,today()); if(!a||attOut(a)){ attTrack(false); return; }
+    const r=await getLocation(); if(r.err) return;
+    await API.arrayAdd('attendance',a.id||attId(who.id,today()),'points',{t:Date.now(),lat:r.lat,lng:r.lng,acc:r.acc,k:'p'});
+  }catch(e){ console.warn('att',e); } finally{ _attBusy=false; }
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&_attT) attTick(); });
+
+async function mkTestRep(btn){
+  btn.disabled=true;
+  try{ await API.add('users',{name:'مندوب تجربة',username:'test',phone:'',role:'rep',test:true,attendance:true,active:true,createdAt:'__SV__'}); S.users=await API.query('users',[],{fresh:true}); toast('اتعمل حساب التجربة'); renderTab(); }
+  catch(e){ btn.disabled=false; toast('مقدرش: '+(e.message||e)); }
+}
+/* شاشة محمود: حضور النهارده */
+async function attCard(vsToday){
+  if(!attAdminView()) return '';
+  const us=S.users.filter(attOn); if(!us.length) return '';
+  const rows=await Promise.all(us.map(async u=>({u,a:await attGet(u.id,today())})));
+  const ord=x=>!x.a?2:attOut(x.a)?1:0; rows.sort((x,y)=>ord(x)-ord(y));
+  return `<div class="sec"><h3>حضور النهارده</h3></div><div class="card attc">${rows.map(({u,a})=>{
+    const o=attOut(a), nv=vsToday.filter(v=>v.repUid===u.id).length;
+    const cls=!a?'red':o?'':'on', txt=!a?'<span style="color:var(--red)">لسه ما بصمش</span>': o?`${fTime(a.inAt)} ← ${fTime(o.t)}${o.auto?' (تلقائي)':''}`:`${fTime(a.inAt)} · ${nv} ${nv===1?'زيارة':'زيارات'}`;
+    return `<div class="row ar"><i class="dot ${cls}"></i><div class="grow">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}</div><div class="small" style="color:#5F5A4E">${txt}</div>${a?`<button class="ib2" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',16)}</button>`:''}</div>`; }).join('')}</div>`;
+}
+/* نقاط البصمة على الخريطة */
+async function attMapPoints(rep,day){
+  const u=userById(rep); if(!attOn(u)) return null;
+  const a=await attGet(rep,day); if(!a) return null;
+  const ps=attPts(a); const gaps=[]; const o=attOut(a);
+  for(let i=1;i<ps.length;i++) if(ps[i].t-ps[i-1].t>ATT_GAP) gaps.push([ps[i-1].t,ps[i].t]);
+  if(!o && ps.length && Date.now()-ps[ps.length-1].t>ATT_GAP && day===today()) gaps.push([ps[ps.length-1].t,Date.now()]);
+  return {a,ps,gaps,o};
+}
+function attTimeline(x){
+  if(!x) return '';
+  const {a,ps,gaps,o}=x;
+  return `<div class="card" style="margin-top:10px"><div class="row" style="gap:8px">${ic('finger',18)}<div class="grow"><b style="font-weight:500">البصمة</b><div class="small muted">حضور ${fTime(a.inAt)}${o?` · انصراف ${fTime(o.t)}${o.auto?' (تلقائي)':''} · ${hm(o.t-a.inAt)}`:' · لسه في الدوام'} · ${ps.length} نقطة موقع</div></div></div>
+  ${gaps.length?`<div class="small" style="margin-top:8px;color:var(--amber)">${gaps.map(g=>`من ${fTime(g[0])} لـ ${fTime(g[1])} مفيش مواقع (التطبيق كان مقفول)`).join('<br>')}</div>`:''}</div>`;
+}
+
 document.addEventListener('click',async e=>{
   const t=e.target.closest('[data-act],[data-tab]'); if(!t) return;
   if(t.dataset.tab){ S.tab=t.dataset.tab; S.q=''; if(t.closest('.nav')||t.closest('main')) { closeSheet(true); } render(); window.scrollTo(0,0); return; }
@@ -1498,6 +1615,10 @@ document.addEventListener('click',async e=>{
     case 'changePw': { const p=$('#npw').value; if(p.length<6){ toast('6 حروف أو أرقام على الأقل'); return; } try{ await API.changePassword(p); toast('اتغيرت كلمة المرور'); closeSheet(); }catch(err){ toast(err.code==='auth/requires-recent-login'?'اخرج وادخل تاني الأول وبعدين غيّرها':'مشكلة: '+(err.message||err),4000); } break; }
     case 'reload': API.clearCache(); renderTab(); break;
     case 'closeSheet': closeSheet(); break;
+    case 'attIn': attIn(t); break;
+    case 'attEnd': attEndAsk(); break;
+    case 'attEndGo': attEnd(t); break;
+    case 'mkTestRep': mkTestRep(t); break;
     case 'delCust': if(!isAdmin()) return; closeSheet(true); openDelCust(d.id); break;
     case 'doDelCust': if(!isAdmin()) return; doDelCust(d.id,t); break;
     case 'openBell': openBell(); break;
