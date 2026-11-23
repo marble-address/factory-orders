@@ -16,7 +16,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       // المدير بيضيف المناديب — وحساب المدير نفسه بيتعمل مرة واحدة من شاشة الدخول
-      allow create: if (isAdmin() && request.resource.data.role == 'rep')
+      allow create: if (isAdmin() && request.resource.data.role in ['rep', 'admin'])
                     || (signedIn() && request.auth.uid == uid
                         && request.auth.token.email == 'mahmoud@marble-visits.app'
                         && request.resource.data.role == 'admin');

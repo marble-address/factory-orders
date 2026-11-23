@@ -403,7 +403,7 @@ function liveAPI(){
       let sec = firebase.apps.find(a=>a.name==='sec') || firebase.initializeApp(FIREBASE_CONFIG,'sec');
       const c = await sec.auth().createUserWithEmailAndPassword(em(d.username),d.password);
       const id=c.user.uid; await sec.auth().signOut();
-      await fs.collection('users').doc(id).set({name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:'rep',active:true,createdAt:SV()});
+      await fs.collection('users').doc(id).set({name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:d.role||'rep',title:d.title||'',active:true,createdAt:SV()});
       return id;
     },
     async get(col,id){ const d=await fs.collection(col).doc(id).get(); return d.exists?fromDoc(d):null; },
@@ -434,7 +434,7 @@ function demoAPI(){
     async login(uid){ cur={uid}; try{ sessionStorage.setItem('mv_demo_s',uid); }catch(e){} cb(cur); },
     async logout(){ cur=null; try{ sessionStorage.removeItem('mv_demo_s'); }catch(e){} cb(null); },
     async changePassword(){ },
-    async createRep(d){ const id='u'+uid12(); db.users[id]={name:d.name,username:d.username,phone:d.phone||'',role:'rep',active:true,createdAt:Date.now()}; save(); return id; },
+    async createRep(d){ const id='u'+uid12(); db.users[id]={name:d.name,username:d.username,phone:d.phone||'',role:d.role||'rep',title:d.title||'',active:true,createdAt:Date.now()}; save(); return id; },
     async get(col,id){ const o=(db[col]||{})[id]; return o?{...o,id}:null; },
     async query(col,filters=[]){ return Object.entries(db[col]||{}).map(([id,o])=>({...o,id})).filter(o=>filters.every(f=>match(o,f))); },
     async add(col,data,id){ id=id||uid12(); (db[col]=db[col]||{})[id]=fix(data); save(); return {id,saved:true}; },
@@ -552,7 +552,7 @@ function render(){
                      : [['home','الرئيسية','chart'],['visits','الزيارات','list'],['map','الخريطة','map'],['act','التنشيط','bolt'],['team','الفريق','users']];
   $('#app').innerHTML = `
   ${API.mode==='demo'?'<div class="demo">نسخة معاينة · البيانات تجريبية ومش بتتحفظ على السيرفر · <u data-act="resetDemo">إعادة البيانات</u></div>':''}
-  <header class="hdr"><img src="${LOGO}" alt=""><div class="tt"><b>قسم المشاريع</b><small>${isAdmin()&&!S.viewAs?'لوحة مدير المشاريع':'عنوان الرخام'}</small></div>
+  <header class="hdr"><img src="${LOGO}" alt=""><div class="tt"><b>قسم المشاريع</b><small>${isAdmin()&&!S.viewAs?'لوحة '+esc(S.me.title||'مدير المشاريع'):'عنوان الرخام'}</small></div>
     ${isAdmin()&&!S.viewAs?`<button class="onl" id="onlineBtn" data-act="openOnline" title="مين متصل"><i></i><span id="onlineN">0</span> متصل</button>`:''}
     <button class="ib bell" data-act="openBell" title="الإشعارات">${ic('bell',20)}<span class="n hide" id="bellN">0</span></button>
     ${isAdmin()&&!S.viewAs?`<button class="ib" data-act="newVisit" title="تسجيل زيارة">${ic('plus',20)}</button>`:''}
@@ -855,6 +855,9 @@ async function adminTeam(m){
     <div class="acts"><button data-act="viewAs" data-id="${r.id}">${ic('eye',16)} افتح شاشته</button><button data-act="editRep" data-id="${r.id}">${ic('user',16)} تعديل</button></div></div>`).join('')}
   ${pending.length?`<div class="sec"><h3>لسه ما اتعملش حسابهم</h3></div>${pending.map(r=>`<div class="rep"><div class="top"><div class="avt" style="background:#C9C2B0">${esc(initials(r.name))}</div><div class="grow"><b style="font-weight:500">${esc(r.name)}</b><div class="small muted">اسم المستخدم المقترح: <span dir="ltr">${r.username}</span></div></div><button class="btn sm" data-act="createRep" data-name="${esc(r.name)}" data-u="${r.username}">إنشاء الحساب</button></div></div>`).join('')}`:''}
   <div style="margin-top:14px"><button class="btn sec2" data-act="createRep">${ic('plus',18)} إضافة مندوب جديد</button></div>
+  <div class="sec"><h3>حسابات المديرين</h3><span class="cnt">${S.users.filter(u=>u.role==='admin').length}</span></div>
+  ${S.users.filter(u=>u.role==='admin').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:var(--gold)">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مدير المشاريع')} · <span dir="ltr">${esc(a.username)}</span>${a.id===S.me.id?' · إنت':''}</div></div>${a.id!==S.me.id?`<button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button>`:''}</div></div>`).join('')}
+  <div style="margin-top:10px"><button class="btn sec2" data-act="createAdminAcc">${ic('key',18)} إضافة مدير بكل الصلاحيات</button></div>
   <div class="card" style="margin-top:16px"><div class="row">${ic('pin',20)}<div class="grow small">أقصى مسافة مسموحة بين المندوب وموقع العميل: <b>${MAX_DIST} متر</b>. أي زيارة أبعد من كده بتتعلّم «ملاحظة» عندك.</div></div></div>`;
 }
 
@@ -1090,8 +1093,11 @@ async function saveContact(){
 }
 
 /* ---- حساب المندوب ---- */
-async function openCreateRep(name='',u=''){
-  sheet('حساب مندوب جديد',`
+async function openCreateRep(name='',u='',role='rep'){
+  S.crRole=role;
+  sheet(role==='admin'?'حساب مدير جديد':'حساب مندوب جديد',`
+    ${role==='admin'?`<div class="warnbox" style="margin-top:12px">${ic('key',18)}<div>حساب المدير بيشوف كل حاجة وله كل صلاحياتك: كل المناديب والعملاء والزيارات، والتعليقات والمهام، وفتح شاشات المناديب.</div></div>
+    <div class="fld"><label>المسمى الوظيفي</label><input class="inp" id="crT" value="المدير العام"></div>`:''}
     <div class="fld"><label>الاسم <i>*</i></label><input class="inp" id="crN" value="${esc(name)}"></div>
     <div class="fld"><label>اسم المستخدم (إنجليزي بدون مسافات) <i>*</i></label><input class="inp" id="crU" dir="ltr" autocapitalize="off" value="${esc(u)}"></div>
     <div class="fld"><label>رقم الجوال</label><input class="inp" id="crP" type="tel" dir="ltr" placeholder="اختياري، تقدر تضيفه بعدين"></div>
@@ -1100,11 +1106,12 @@ async function openCreateRep(name='',u=''){
 }
 async function doCreateRep(btn){
   const name=$('#crN').value.trim(), u=$('#crU').value.trim().toLowerCase(), phone=$('#crP').value.trim(), pw=$('#crPw').value.trim();
+  const role=S.crRole==='admin'?'admin':'rep', title=role==='admin'?(($('#crT')||{}).value||'').trim():'';
   if(!name||!/^[a-z0-9._-]{3,}$/.test(u)){ toast('اكتب الاسم واسم مستخدم إنجليزي (3 حروف على الأقل)'); return; }
   if(pw.length<6){ toast('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
   btn.disabled=true; btn.innerHTML='<span class="spin" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>';
   try{
-    await API.createRep({name,username:u,phone,password:pw});
+    await API.createRep({name,username:u,phone,password:pw,role,title});
     S.users=await API.query('users');
     const link=location.href.split('#')[0].split('?')[0];
     const msg=`أهلاً ${name.split(' ')[0]} 👋\nده تطبيق «قسم المشاريع» – عنوان الرخام:\n${link}\n\nاسم المستخدم: ${u}\nكلمة المرور: ${pw}\n\nافتح اللينك من Safari أو Chrome وضيفه للشاشة الرئيسية.`;
@@ -1127,7 +1134,7 @@ function openEditRep(id){
 
 /* ---- الحساب ---- */
 function openAccount(){
-  sheet('حسابي',`<div class="card row" style="margin-top:12px"><div class="avt" style="background:${isAdmin()?'var(--gold)':'var(--g)'}">${esc(initials(S.me.name))}</div><div class="grow"><b style="font-weight:500">${esc(S.me.name)}</b><div class="small muted">${isAdmin()?'مدير المشاريع':'مندوب مبيعات'} · <span dir="ltr">${esc(S.me.username)}</span></div></div></div>
+  sheet('حسابي',`<div class="card row" style="margin-top:12px"><div class="avt" style="background:${isAdmin()?'var(--gold)':'var(--g)'}">${esc(initials(S.me.name))}</div><div class="grow"><b style="font-weight:500">${esc(S.me.name)}</b><div class="small muted">${isAdmin()?esc(S.me.title||'مدير المشاريع'):'مندوب مبيعات'} · <span dir="ltr">${esc(S.me.username)}</span></div></div></div>
     ${API.mode==='live'?`<div class="fld"><label>تغيير كلمة المرور</label><input class="inp" id="npw" type="password" dir="ltr" placeholder="6 أرقام أو حروف على الأقل"></div><div style="margin-top:10px"><button class="btn sec2" data-act="changePw">${ic('key',18)} حفظ كلمة المرور</button></div>`:''}
     <div class="card small muted" style="margin-top:14px">عشان التطبيق يفتح زي أي أبليكيشن: من Safari دوس على زرار المشاركة ⬆️ ثم «إضافة إلى الشاشة الرئيسية». ومن Chrome على أندرويد: القايمة ⋮ ثم «إضافة إلى الشاشة الرئيسية».</div>`,
     `<button class="btn red" data-act="logout">${ic('out',18)} تسجيل خروج</button>`);
@@ -1228,7 +1235,7 @@ async function loadComments(c){
 function commentsHtml(list){
   if(!list.length) return `<div class="small muted" style="padding:6px 2px">لسه مفيش تعليقات على العميل ده.</div>`;
   return list.map(x=>{ const mine=x.authorUid===S.me.id;
-    return `<div class="cm ${x.authorRole==='admin'?'adm':''} ${mine?'me':''}"><div class="cmh"><b>${esc(x.authorName||'')}</b>${x.authorRole==='admin'?' · مدير المشاريع':''}<span>${fWhen(x.createdAt)}</span></div><div class="cmt">${esc(x.text)}</div></div>`; }).join('');
+    return `<div class="cm ${x.authorRole==='admin'?'adm':''} ${mine?'me':''}"><div class="cmh"><b>${esc(x.authorName||'')}</b>${x.authorRole==='admin'?' · '+esc(x.authorTitle||'مدير المشاريع'):''}<span>${fWhen(x.createdAt)}</span></div><div class="cmt">${esc(x.text)}</div></div>`; }).join('');
 }
 async function sendComment(cid){
   const inp=$('#cmIn'); const text=(inp&&inp.value||'').trim(); if(!text){ toast('اكتب التعليق الأول'); return; }
@@ -1236,7 +1243,7 @@ async function sendComment(cid){
   const now=Date.now();
   inp.value=''; const btn=$('#cmBtn'); if(btn) btn.disabled=true;
   try{
-    await API.add('comments',{customerId:c.id,customerName:c.name,ownerUid:c.ownerUid,authorUid:S.me.id,authorName:S.me.name,authorRole:S.me.role,text,createdAt:'__SV__'});
+    await API.add('comments',{customerId:c.id,customerName:c.name,ownerUid:c.ownerUid,authorUid:S.me.id,authorName:S.me.name,authorRole:S.me.role,authorTitle:S.me.title||'',text,createdAt:'__SV__'});
     const patch=isMeAdmin()?{lastCommentAt:now,lastCommentBy:S.me.id,seenAdmin:now}:{lastCommentAt:now,lastCommentBy:S.me.id,seenRep:now};
     await API.update('customers',c.id,patch); Object.assign(c,patch);
     if(isMeAdmin()) notify(c.ownerUid,'💬 تعليق من '+S.me.name.split(' ')[0]+' · '+c.name,text,{kind:'comment',customerId:c.id});
@@ -1325,9 +1332,10 @@ async function myNotifs(){
   const l=await API.query('notifs',[['toUid','in',to]]);
   return l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 }
+function isRead(x){ return x.toUid===ADMINS ? (x.readBy||[]).includes(S.me.id) : !!x.read; }
 async function refreshBell(){
   if(!S.me) return;
-  try{ const l=await myNotifs(); S._notifs=l; const n=l.filter(x=>!x.read).length; S._unread=n;
+  try{ const l=await myNotifs(); S._notifs=l; const n=l.filter(x=>!isRead(x)).length; S._unread=n;
     const b=$('#bellN'); if(b){ b.textContent=n>99?'99+':n; b.classList.toggle('hide',!n); }
   }catch(e){ console.warn('bell',e); }
 }
@@ -1335,9 +1343,9 @@ async function openBell(){
   const l=S._notifs||await myNotifs();
   const st=pushState();
   sheet('الإشعارات',`${st.html}
-    <div style="margin-top:10px">${l.length? l.slice(0,60).map(x=>`<button class="it ntf ${x.read?'':'unread'}" data-act="openNotif" data-id="${x.id}"><div class="avt" style="background:${x.kind==='task'?'var(--gold)':x.kind==='taskDone'?'var(--g)':'var(--blue)'};width:38px;height:38px">${ic(x.kind==='task'?'pinpaper':x.kind==='taskDone'?'check':'chat',18)}</div><div class="grow"><b class="ell">${esc(x.title)}</b><span class="meta" style="white-space:normal">${esc(x.body||'')}</span><span class="meta">${fWhen(x.createdAt)}</span></div></button>`).join('') : `<div class="card empty">${ic('bell',30)}مفيش إشعارات لسه</div>`}</div>`,'',{full:true});
-  const unread=l.filter(x=>!x.read);
-  if(unread.length){ Promise.all(unread.map(x=>API.update('notifs',x.id,{read:true}).then(()=>{x.read=true;}).catch(()=>{}))).then(refreshBell); }
+    <div style="margin-top:10px">${l.length? l.slice(0,60).map(x=>`<button class="it ntf ${isRead(x)?'':'unread'}" data-act="openNotif" data-id="${x.id}"><div class="avt" style="background:${x.kind==='task'?'var(--gold)':x.kind==='taskDone'?'var(--g)':'var(--blue)'};width:38px;height:38px">${ic(x.kind==='task'?'pinpaper':x.kind==='taskDone'?'check':'chat',18)}</div><div class="grow"><b class="ell">${esc(x.title)}</b><span class="meta" style="white-space:normal">${esc(x.body||'')}</span><span class="meta">${fWhen(x.createdAt)}</span></div></button>`).join('') : `<div class="card empty">${ic('bell',30)}مفيش إشعارات لسه</div>`}</div>`,'',{full:true});
+  const unread=l.filter(x=>!isRead(x));
+  if(unread.length){ Promise.all(unread.map(x=>(x.toUid===ADMINS? API.update('notifs',x.id,{readBy:(x.readBy||[]).concat(S.me.id)}).then(()=>{x.readBy=(x.readBy||[]).concat(S.me.id);}) : API.update('notifs',x.id,{read:true}).then(()=>{x.read=true;})).catch(()=>{}))).then(refreshBell); }
 }
 async function openNotif(id){
   const x=(S._notifs||[]).find(n=>n.id===id); if(!x) return;
@@ -1405,9 +1413,9 @@ async function refreshOnline(){
   const w=$('#onlineBtn'); if(w) w.classList.toggle('live',n>0);
 }
 function openOnline(){
-  const list=reps().slice().sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
+  const list=S.users.filter(u=>u.id!==S.me.id&&u.active!==false).sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
   sheet('مين متصل',`<div style="margin-top:10px">${list.map(u=>{ const on=u.lastSeen&&Date.now()-u.lastSeen<ONLINE_MS;
-    return `<div class="it" style="cursor:default"><div class="avt" style="background:${repColor(u.id)}">${esc(initials(u.name))}</div><div class="grow"><b>${esc(u.name)}</b><span class="meta">${on?'متصل دلوقتي':u.lastSeen?'آخر ظهور '+ago(u.lastSeen):'لسه ما دخلش التطبيق'}${u.notifOn?' · الإشعارات شغالة':''}</span></div><span class="dot ${on?'on':''}"></span></div>`; }).join('')}</div>
+    return `<div class="it" style="cursor:default"><div class="avt" style="background:${u.role==='admin'?'var(--gold)':repColor(u.id)}">${esc(initials(u.name))}</div><div class="grow"><b>${esc(u.name)}</b><span class="meta">${u.role==='admin'?esc(u.title||'مدير')+' · ':''}${on?'متصل دلوقتي':u.lastSeen?'آخر ظهور '+ago(u.lastSeen):'لسه ما دخلش التطبيق'}${u.notifOn?' · الإشعارات شغالة':''}</span></div><span class="dot ${on?'on':''}"></span></div>`; }).join('')}</div>
     <div class="small muted" style="margin-top:10px">«متصل» يعني فاتح التطبيق خلال آخر 3 دقايق.</div>`);
 }
 
@@ -1499,6 +1507,7 @@ document.addEventListener('click',async e=>{
     case 'import': openImport(); break;
     case 'doImport': doImport(t); break;
     case 'createRep': openCreateRep(d.name||'',d.u||''); break;
+    case 'createAdminAcc': openCreateRep('','','admin'); break;
     case 'doCreateRep': doCreateRep(t); break;
     case 'copyMsg': try{ await navigator.clipboard.writeText($('#shareMsg').textContent); toast('اتنسخت'); }catch(err){ toast('علّم على الرسالة وانسخها'); } break;
     case 'editRep': openEditRep(d.id); break;
