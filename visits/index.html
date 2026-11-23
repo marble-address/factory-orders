@@ -1463,7 +1463,7 @@ async function refreshOnline(){
   const w=$('#onlineBtn'); if(w) w.classList.toggle('live',n>0);
 }
 function openOnline(){
-  const list=S.users.filter(u=>u.id!==S.me.id&&u.active!==false).sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
+  const list=S.users.filter(u=>u.id!==S.me.id&&u.active!==false&&!u.test).sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
   sheet('مين متصل',`<div style="margin-top:10px">${list.map(u=>{ const on=u.lastSeen&&Date.now()-u.lastSeen<ONLINE_MS;
     return `<div class="it" style="cursor:default"><div class="avt" style="background:${u.role==='admin'?'var(--gold)':repColor(u.id)}">${esc(initials(u.name))}</div><div class="grow"><b>${esc(u.name)}</b><span class="meta">${u.role==='admin'?esc(u.title||'مدير')+' · ':''}${on?'متصل دلوقتي':u.lastSeen?'آخر ظهور '+ago(u.lastSeen):'لسه ما دخلش التطبيق'}${u.notifOn?' · الإشعارات شغالة':''}</span></div><span class="dot ${on?'on':''}"></span></div>`; }).join('')}</div>
     <div class="small muted" style="margin-top:10px">«متصل» يعني فاتح التطبيق خلال آخر 3 دقايق.</div>`);
