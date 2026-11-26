@@ -50,7 +50,7 @@ function loadUsers_() {
       var f = d.fields || {};
       var toks = ((f.fcmTokens && f.fcmTokens.arrayValue && f.fcmTokens.arrayValue.values) || []).map(function (v) { return v.stringValue; });
       out.push({ id: d.name.split('/').pop(), role: val_(f.role), tokens: toks, name: val_(f.name) || '',
-        active: f.active ? f.active.booleanValue : true, attendance: f.attendance ? f.attendance.booleanValue : true, test: !!(f.test && f.test.booleanValue) });
+        active: f.active ? f.active.booleanValue : true, attendance: f.attendance ? f.attendance.booleanValue : true, test: !!(f.test && f.test.booleanValue), seen: !!f.lastSeen });
     });
     token = r.nextPageToken || '';
   } while (token);
@@ -126,7 +126,7 @@ function attendanceReminders() {
 }
 
 function missingReps_(day) {
-  var users = loadUsers_().filter(function (u) { return u.role === 'rep' && u.active !== false && u.attendance !== false && !u.test; });
+  var users = loadUsers_().filter(function (u) { return u.role === 'rep' && u.active !== false && u.attendance !== false && !u.test && u.seen; });   // اللي دخل التطبيق مرة على الأقل بس
   return users.filter(function (u) {
     var r = UrlFetchApp.fetch(FS + '/attendance/' + u.id + '_' + day + '?mask.fieldPaths=inAt', { muteHttpExceptions: true,
       headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'x-goog-user-project': PROJECT } });
