@@ -281,7 +281,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-26-r2';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-26-r3';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -427,6 +427,8 @@ const TS_FIELDS = ['createdAt','updatedAt'];
 function liveAPI(){
   const app = firebase.initializeApp(FIREBASE_CONFIG);
   const auth = firebase.auth(), fs = firebase.firestore();
+  // الآيفون (التطبيق المضاف للشاشة الرئيسية) ساعات بيعلّق اتصال Firestore المفتوح؛ الـ long polling أثبت وأسرع في أول تحميل
+  try{ fs.settings({experimentalForceLongPolling:true, merge:true}); }catch(e){}
   // من غير كاش IndexedDB: على الآيفون لما التطبيق يروح للخلفية (مشاركة ملف مثلًا) الكاش ده كان بيقفل Firestore ("client has been terminated")
   // بدله كاش سريع في الذاكرة لكل استعلام (Q) بيتمسح مع أي تعديل
   const QC=new Map(), QTTL=60000;
@@ -457,14 +459,18 @@ function liveAPI(){
       await sec.auth().signOut();
       return id;
     },
-    async get(col,id){ try{ const d=await TO(fs.collection(col).doc(id).get(),15000); return d.exists?fromDoc(d):null; }catch(e){ guard(e); } },
+    async get(col,id){
+      const once=()=>TO(fs.collection(col).doc(id).get(),12000);
+      try{ let d; try{ d=await once(); }catch(e){ if(!/اتأخر/.test(e.message)) throw e; await this.reconnect(); d=await once(); }
+        return d.exists?fromDoc(d):null; }catch(e){ guard(e); } },
     async query(col,filters=[],opt={}){
       const k=qkey(col,filters), hit=QC.get(k);
       if(!opt.fresh && hit && Date.now()-hit.t<QTTL) return hit.v.slice();
       let q=fs.collection(col);
       for(const [f,op,v] of filters) q=q.where(f,op, TS_FIELDS.includes(f)&&typeof v==='number'?firebase.firestore.Timestamp.fromMillis(v):v);
       try{
-        const s=await TO(q.get(),15000); const v=s.docs.map(fromDoc);
+        let s; try{ s=await TO(q.get(),12000); }catch(e){ if(!/اتأخر/.test(e.message)) throw e; await this.reconnect(); s=await TO(q.get(),15000); }
+        const v=s.docs.map(fromDoc);
         QC.set(k,{t:Date.now(),v}); return v.slice();
       }catch(e){ if(hit) return hit.v.slice(); guard(e); }
     },
