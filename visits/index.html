@@ -281,6 +281,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
+const BUILD = '2026-11-26-r1';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -468,6 +469,7 @@ function liveAPI(){
       }catch(e){ if(hit) return hit.v.slice(); guard(e); }
     },
     clearCache(col){ if(col) dropCol(col); else QC.clear(); },
+    async reconnect(){ try{ await TO(fs.disableNetwork(),3000); }catch(e){} try{ await TO(fs.enableNetwork(),5000); }catch(e){} },
     async arrayAdd(col,id,field,val){ dropCol(col); await settle(fs.collection(col).doc(id).update({[field]:firebase.firestore.FieldValue.arrayUnion(val)})); },
     async add(col,data,id){ dropCol(col); const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); dropCol(col); return {id:ref.id,saved}; },
     async update(col,id,patch){ dropCol(col); const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); dropCol(col); return {saved}; },
@@ -572,6 +574,7 @@ function loadScript(src){ return new Promise((res,rej)=>{ const s=document.creat
 function loadCss(href){ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); }
 
 async function boot(){
+  newBuild().then(b=>{ if(b){ try{ if(sessionStorage.getItem('mv_bld')===b) return; sessionStorage.setItem('mv_bld',b); }catch(e){} location.reload(); } });
   const DEMO = /[?&]demo(=|&|$)/.test(location.search);
   if(FIREBASE_CONFIG && !DEMO){
     try{
@@ -587,6 +590,7 @@ async function boot(){
     if(inv&&API.mode==='live'){ try{ await API.logout(); }catch(e){} try{ await API.login(inv.u,inv.p); }catch(e){ S._invErr=true; } }
   }
   API.onAuth(async u=>{
+    if(u && S.me && S.me.id===u.uid && !S.me.mustSetPw) return;   // نفس المستخدم (رجوع من الخلفية): متعيدش التحميل من الأول
     if(!u){ S.me=null; renderLogin(S._invErr?'اللينك ده اتستخدم قبل كده أو اتلغى. اطلب لينك جديد من المدير.':undefined); S._invErr=false; return; }
     try{
       const me = await API.get('users',u.uid);
@@ -639,7 +643,9 @@ function render(){
   renderTab();
 }
 async function renderTab(){
-  const m=$('#main'); if(!m) return;
+  const old=$('#main'); if(!old) return;
+  // كل عرض بياخد <main> جديد: لو عرض قديم (أبطأ) خلص متأخر، بيكتب في عنصر مش ظاهر بدل ما يغطي على الجديد
+  const m=old.cloneNode(false); m.innerHTML=old.innerHTML; old.replaceWith(m);
   const asRep = !isAdmin() || S.viewAs;
   try{
     if(isEng()){ if(S.tab==='map') await engMap(m); else { S.tab='home'; await engHome(m); } }
@@ -1726,7 +1732,7 @@ let _hb=null;
 function startHeartbeat(){
   const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()}).catch(()=>{}); refreshBell(); if(isMeAdmin()) refreshOnline(); };
   clearInterval(_hb); beat(); _hb=setInterval(beat,60000);
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) beat(); });
+  if(!startHeartbeat._on){ startHeartbeat._on=true; document.addEventListener('visibilitychange',()=>{ if(!document.hidden) beat(); }); }
 }
 async function refreshOnline(){
   try{ S.users=await API.query('users',[],{fresh:true}); }catch(e){ return; }
@@ -1984,7 +1990,25 @@ document.addEventListener('change',async e=>{
 });
 let qT; document.addEventListener('input',e=>{ if(e.target.id==='q'){ clearTimeout(qT); const v=e.target.value; qT=setTimeout(()=>{ S.q=v; const pos=e.target.selectionStart; renderTab().then(()=>{ const q=$('#q'); if(q){ q.focus(); try{q.setSelectionRange(pos,pos);}catch(_){} } }); },300); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.target.id==='lp'||e.target.id==='lu')){ const b=document.querySelector('[data-act="login"]'); b&&b.click(); } });
-document.addEventListener('visibilitychange',()=>{ if(document.hidden){ S._hidAt=Date.now(); return; } if(S.me&&!$('#ov')&&Date.now()-(S._hidAt||Date.now())>60000){ API.clearCache(); renderTab(); } });
+/* رجوع من الخلفية: تحديث النسخة لو فيه جديدة + إعادة الاتصال + بيانات جديدة */
+async function newBuild(){
+  try{ const t=await fetch(location.pathname+'?b='+Date.now(),{cache:'no-store'}).then(r=>r.text()); const m=/const BUILD = '([^']+)'/.exec(t); return m&&m[1]!==BUILD?m[1]:null; }catch(e){ return null; }
+}
+let _resuming=false;
+async function onResume(){
+  if(_resuming) return; _resuming=true;
+  try{
+    const away=Date.now()-(S._hidAt||Date.now());
+    if(away>20000 && !$('#ov') && await newBuild()){ hardReload(); return; }
+    if(S.me && away>20000){
+      if(API.reconnect) await API.reconnect();
+      API.clearCache();
+      if(!$('#ov')) await renderTab();
+    }
+  } finally { _resuming=false; }
+}
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ S._hidAt=Date.now(); return; } onResume(); });
+window.addEventListener('pageshow',e=>{ if(e.persisted){ S._hidAt=S._hidAt||Date.now()-60000; onResume(); } });
 
 boot();
 </script>
