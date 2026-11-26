@@ -207,13 +207,13 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 .toast.show{opacity:1;transform:translateX(-50%)}
 
 /* login */
-.login{min-height:100vh;display:flex;flex-direction:column;background:radial-gradient(120% 70% at 100% 0%,#0E8253 0%,#065A36 45%,#043A23 100%);padding:calc(var(--safe-t) + 40px) 20px calc(var(--safe-b) + 24px)}
-.login .lg{text-align:center;color:#fff}
-.login .lg img{width:150px}
+.login{min-height:100vh;display:flex;flex-direction:column;background:#fff;padding:calc(var(--safe-t) + 40px) 20px calc(var(--safe-b) + 24px)}
+.login .lg{text-align:center;color:#065A36}
+.login .lg img{width:170px}
 .login .lg h1{font-weight:500;font-size:22.5px;margin:18px 0 2px}
-.login .lg p{margin:0;opacity:.75;font-weight:300}
-.login .box{background:#fff;border-radius:24px;padding:20px;margin:28px auto 0;width:100%;max-width:420px;box-shadow:0 20px 40px rgba(0,0,0,.25)}
-.login .foot{text-align:center;color:rgba(255,255,255,.55);font-size:11px;margin-top:auto;padding-top:24px}
+.login .lg p{margin:0;color:#8A8270;font-weight:300}
+.login .box{background:#fff;border-radius:24px;padding:20px;margin:28px auto 0;width:100%;max-width:420px;border:1px solid #EFEADF;box-shadow:0 10px 30px rgba(6,90,54,.08)}
+.login .foot{text-align:center;color:#A39B88;font-size:11px;margin-top:auto;padding-top:24px}
 .err{color:var(--red);font-size:12.5px;margin-top:10px}
 
 /* rep cards admin */
@@ -281,7 +281,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-26-r1';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-26-r2';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -608,7 +608,7 @@ function renderLogin(msg){
   const demo = API.mode==='demo';
   const users = demo ? Object.entries(API._db().users) : [];
   $('#app').innerHTML = `<div class="login">
-    <div class="lg"><img src="${LOGO}" alt="عنوان الرخام"><h1>قسم المشاريع</h1><p>سجّل زياراتك وتابع عملاءك</p></div>
+    <div class="lg"><img src="logo-color.png" alt="عنوان الرخام"><h1>قسم المشاريع</h1><p>سجّل زياراتك وتابع عملاءك</p></div>
     <div class="box">
     ${demo ? `<div class="warnbox" style="margin:0 0 14px">${ic('eye',18)}<div>نسخة معاينة ببيانات تجريبية. اختار تدخل بأي حساب.</div></div>
       ${users.map(([id,u])=>`<button class="it" data-act="demoLogin" data-id="${id}"><div class="avt" style="background:${u.role==='admin'?'var(--gold)':'var(--g)'}">${esc(initials(u.name))}</div><div class="grow"><b>${esc(u.name)}</b><span class="meta">${u.role==='admin'?'مدير المشاريع':'مندوب مبيعات'}</span></div></button>`).join('')}`
@@ -970,7 +970,7 @@ function inviteLink(u,p){ return location.href.split('#')[0].split('?')[0]+'#log
 function inviteMsg(name,u,link){ return `أهلاً ${name.split(' ')[0]} 👋\nده لينك دخولك على تطبيق عنوان الرخام:\n${link}\n\nافتحه من الموبايل، واعمل كلمة المرور بتاعتك. اسم المستخدم بتاعك: ${u}\nاللينك بيشتغل مرة واحدة بس، متبعتهوش لحد.`; }
 function renderSetPw(msg){
   $('#app').innerHTML=`<div class="login">
-    <div class="lg"><img src="${LOGO}" alt="عنوان الرخام"><h1>أهلاً يا ${esc(S.me.name.split(' ')[0])}</h1><p>اعمل كلمة المرور بتاعتك</p></div>
+    <div class="lg"><img src="logo-color.png" alt="عنوان الرخام"><h1>أهلاً يا ${esc(S.me.name.split(' ')[0])}</h1><p>اعمل كلمة المرور بتاعتك</p></div>
     <div class="box">
       <div class="small muted" style="margin-bottom:10px">اسم المستخدم بتاعك: <b dir="ltr" style="font-weight:500">${esc(S.me.username)}</b> · احفظه، هتدخل بيه مع كلمة المرور دي بعد كده.</div>
       <div class="fld" style="margin-top:0"><label>كلمة المرور الجديدة</label><input class="inp" id="sp1" type="password" dir="ltr" autocomplete="new-password" placeholder="6 حروف أو أرقام على الأقل"></div>
