@@ -10,13 +10,15 @@ service cloud.firestore {
     function isUser() { return signedIn() && exists(userDoc()) && me().active == true; }
     function isAdmin() { return isUser() && me().role == 'admin'; }
     function isRep() { return isUser() && me().role == 'rep'; }
+    function isEng() { return isUser() && me().role == 'eng'; }
     function mine(d) { return d.repUid == request.auth.uid; }
 
     // المستخدمين
     match /users/{uid} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid)
+                  || (isUser() && resource.data.role == 'eng');   // المناديب يعرفوا مين المهندس عشان يبعتوله
       // المدير بيضيف المناديب — وحساب المدير نفسه بيتعمل مرة واحدة من شاشة الدخول
-      allow create: if (isAdmin() && request.resource.data.role in ['rep', 'admin'])
+      allow create: if (isAdmin() && request.resource.data.role in ['rep', 'admin', 'eng'])
                     || (signedIn() && request.auth.uid == uid
                         && request.auth.token.email == 'mahmoud@marble-visits.app'
                         && request.resource.data.role == 'admin');
@@ -91,6 +93,18 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (isRep() && resource.data.uid == request.auth.uid
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'outAt', 'outLoc']));
+      allow delete: if isAdmin();
+    }
+
+    // طلبات زيارة المهندس: المندوب بيطلب، المهندس بيحدد ميعاد ويقفل، والاتنين بيتكلموا في المحادثة
+    match /engreq/{id} {
+      allow read: if isAdmin() || isEng() || (isRep() && resource.data.repUid == request.auth.uid);
+      allow create: if isAdmin() || (isRep() && request.resource.data.repUid == request.auth.uid);
+      allow update: if isAdmin()
+                    || (isEng() && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['status', 'due', 'result', 'photos', 'thread', 'doneAt', 'doneBy', 'engUid']))
+                    || (isRep() && resource.data.repUid == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['thread']));
       allow delete: if isAdmin();
     }
 

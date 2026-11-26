@@ -361,6 +361,7 @@ function uid12(){ return Date.now().toString(36)+Math.random().toString(36).slic
 function genPass(){ return String(Math.floor(100000+Math.random()*900000)); }
 
 const I = {
+  ruler:'<path d="M3 17 17 3l4 4L7 21z"/><path d="m7 13 2 2M10 10l2 2M13 7l2 2"/>',
   menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
   home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
@@ -550,6 +551,7 @@ function seedDemo(){
 /* ================= الحالة ================= */
 const S = { sec:(()=>{ try{ return localStorage.getItem('ma_sec')||'rp'; }catch(e){ return 'rp'; } })(), me:null, users:[], tab:'home', viewAs:null, period:'today', filt:{}, mapRep:'all', mapDay:today(), actFilter:'all', actRep:'all', q:'' };
 const isAdmin = () => S.me && S.me.role==='admin';
+const isEng = () => S.me && S.me.role==='eng';
 const isTop = () => isAdmin() && (!S.me.section || S.me.section==='all');   // محمود وأحمد كامل: كل الأقسام
 function curSec(){
   if(S.viewAs) return secOf(S.viewAs);
@@ -610,14 +612,14 @@ function renderLogin(msg){
 
 /* ================= الإطار ================= */
 function render(){
-  const asRep = !isAdmin() || S.viewAs;
+  const asRep = (!isAdmin() || S.viewAs) && !isEng();
   const who = S.viewAs || S.me;
-  const tabs = asRep ? [['home','الرئيسية','home'],['visits','زياراتي','list'],['fab'],['act','التنشيط','bolt'],['customers','العملاء','building']]
+  const tabs = isEng() ? [['home','الطلبات','pinpaper'],['map','الخريطة','map']] : asRep ? [['home','الرئيسية','home'],['visits','زياراتي','list'],['fab'],['act','التنشيط','bolt'],['customers','العملاء','building']]
                      : [['home','الرئيسية','chart'],['visits','الزيارات','list'],['map','الخريطة','map'],['act','التنشيط','bolt'],['team','الفريق','users']];
   $('#app').innerHTML = `
   ${API.mode==='demo'?'<div class="demo">نسخة معاينة · البيانات تجريبية ومش بتتحفظ على السيرفر · <u data-act="resetDemo">إعادة البيانات</u></div>':''}
   ${BETA?'<div class="beta">نسخة تجريبية للأقسام · المناديب مش شايفينها</div>':''}
-  <header class="hdr" style="background:${secById(curSec()).color}">${isTop()&&!S.viewAs?`<button class="mnu" data-act="openSecs" aria-label="الأقسام">${ic('menu',22)}</button>`:`<img src="${LOGO}" alt="">`}<div class="tt">${isAdmin()&&!S.viewAs?`<b>عنوان الرخام</b><small>${esc(secLabel(curSec()))}${isTop()?'':' · '+esc(S.me.title||'مدير القسم')}</small>`:`<b>${esc(who.name)}</b><small>${who.title?esc(who.title)+' · ':''}${esc(secLabel(curSec()))}</small>`}</div>
+  <header class="hdr" style="background:${isEng()?'#4A4E69':secById(curSec()).color}">${isTop()&&!S.viewAs?`<button class="mnu" data-act="openSecs" aria-label="الأقسام">${ic('menu',22)}</button>`:`<img src="${LOGO}" alt="">`}<div class="tt">${isAdmin()&&!S.viewAs?`<b>عنوان الرخام</b><small>${esc(secLabel(curSec()))}${isTop()?'':' · '+esc(S.me.title||'مدير القسم')}</small>`:`<b>${esc(who.name)}</b><small>${isEng()?esc(who.title||'مهندس')+' · عنوان الرخام':(who.title?esc(who.title)+' · ':'')+esc(secLabel(curSec()))}</small>`}</div>
     ${isAdmin()&&!S.viewAs?`<button class="onl" id="onlineBtn" data-act="openOnline" title="مين متصل"><i></i><span id="onlineN">0</span><span class="onlw"> متصل</span></button>`:''}
     <button class="ib bell" data-act="openBell" title="الإشعارات">${ic('bell',20)}<span class="n hide" id="bellN">0</span></button>
     ${isAdmin()&&!S.viewAs?`<button class="ib" data-act="newVisit" title="تسجيل زيارة">${ic('plus',20)}</button>`:''}
@@ -632,7 +634,8 @@ async function renderTab(){
   const m=$('#main'); if(!m) return;
   const asRep = !isAdmin() || S.viewAs;
   try{
-    if(asRep){
+    if(isEng()){ if(S.tab==='map') await engMap(m); else { S.tab='home'; await engHome(m); } }
+    else if(asRep){
       if(S.tab==='home') await repHome(m);
       else if(S.tab==='visits') await repVisits(m);
       else if(S.tab==='act') await repAct(m);
@@ -697,6 +700,7 @@ async function repHome(m){
   m.innerHTML=`
   <div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(who.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
   ${attOn(who)?attStrip(S._att):''}
+  ${await repEngCard(uid)}
   <div class="stats">
     <div class="st"><b>${vToday}</b><span>زيارات اليوم</span></div>
     <div class="st gold"><b>${vWeek}</b><span>زيارات الأسبوع</span></div>
@@ -808,6 +812,7 @@ async function adminHome(m){
   ${byRes.length?`<div class="card" style="margin-top:10px"><div class="small muted">نتايج الزيارات</div><div class="resbar">${byRes.map(([r,n])=>`<i style="width:${n*100/vs.length}%;background:${RES_COLORS[r]}"></i>`).join('')}</div><div class="legend">${byRes.map(([r,n])=>`<span><i style="background:${RES_COLORS[r]}"></i>${r} ${n}</span>`).join('')}</div></div>`:''}
   ${attAdminView()?await attCard((await allVisitsSince(startOfDay())).filter(v=>inSec(v.repUid))):''}
   ${await adminTasksCard()}
+  ${await adminEngCard()}
   <div class="sec"><h3>المناديب</h3><span class="cnt">${rs.length}</span></div>
   ${rs.map(r=>{ const rv=vs.filter(v=>v.repUid===r.id); const last=rv[0]; const fl=rv.filter(v=>v.flagged).length; const col=repColor(r.id);
     return `<div class="rep"><div class="top"><div class="avt" style="background:${col}">${esc(initials(r.name))}</div>
@@ -936,10 +941,159 @@ async function adminTeam(m){
   ${pending.length?`<div class="sec"><h3>لسه ما اتعملش حسابهم</h3></div>${pending.map(r=>`<div class="rep"><div class="top"><div class="avt" style="background:#C9C2B0">${esc(initials(r.name))}</div><div class="grow"><b style="font-weight:500">${esc(r.name)}</b><div class="small muted">اسم المستخدم المقترح: <span dir="ltr">${r.username}</span></div></div><button class="btn sm" data-act="createRep" data-name="${esc(r.name)}" data-u="${r.username}">إنشاء الحساب</button></div></div>`).join('')}`:''}
   <div style="margin-top:14px"><button class="btn sec2" data-act="createRep">${ic('plus',18)} إضافة مندوب جديد</button></div>
   ${attTestView()?`<div class="sec"><h3>حساب التجربة</h3></div>${S.users.filter(u=>u.test).map(u=>`<div class="rep"><div class="top"><div class="avt" style="background:#9A8F78">${esc(initials(u.name))}</div><div class="grow"><b style="font-weight:500">${esc(u.name)}</b><div class="small muted">مش ظاهر في أرقام المناديب · البصمة شغالة عليه</div></div><button class="btn sm sec2" style="width:auto" data-act="viewAs" data-id="${u.id}">${ic('eye',16)} افتح شاشته</button></div></div>`).join('')||`<button class="btn sec2" data-act="mkTestRep">${ic('plus',18)} اعمل حساب «مندوب تجربة»</button>`}`:''}
+  ${isTop()?`<div class="sec"><h3>المهندسين</h3><span class="cnt">${S.users.filter(u=>u.role==='eng').length}</span></div>
+  ${S.users.filter(u=>u.role==='eng').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:#4A4E69">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مهندس')} · <span dir="ltr">${esc(a.username)}</span></div></div><button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button></div></div>`).join('')}
+  <div style="margin-top:10px"><button class="btn sec2" data-act="createEngAcc">${ic('ruler',18)} إضافة مهندس</button></div>`:''}
   ${isTop()?`<div class="sec"><h3>حسابات المديرين</h3><span class="cnt">${S.users.filter(u=>u.role==='admin').length}</span></div>
   ${S.users.filter(u=>u.role==='admin').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:var(--gold)">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مدير المشاريع')} · ${a.section&&a.section!=='all'?esc(secLabel(a.section)):'كل الأقسام'} · <span dir="ltr">${esc(a.username)}</span>${a.id===S.me.id?' · إنت':''}</div></div>${a.id!==S.me.id?`<button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button>`:''}</div></div>`).join('')}
   <div style="margin-top:10px"><button class="btn sec2" data-act="createAdminAcc">${ic('key',18)} إضافة مدير</button></div>`:''}
   <div class="card" style="margin-top:16px"><div class="row">${ic('pin',20)}<div class="grow small">أقصى مسافة مسموحة بين المندوب وموقع العميل: <b>${MAX_DIST} متر</b>. أي زيارة أبعد من كده بتتعلّم «ملاحظة» عندك.</div></div></div>`;
+}
+
+/* ================= طلبات المهندس ================= */
+const ENG_TYPES=['رفع مقاس','معاينة','استلام موقع','متابعة تركيب','أخرى'];
+const ENG_ST={'جديد':['جديد','blue'],'متحدد':['متحدد له ميعاد','gold'],'تم':['تم','']};
+let _engs=null;
+async function engUsers(){
+  if(isAdmin()) return S.users.filter(u=>u.role==='eng'&&u.active!==false);
+  if(_engs) return _engs;
+  try{ _engs=(await API.query('users',[['role','==','eng']])).filter(u=>u.active!==false); }catch(e){ _engs=[]; }
+  return _engs;
+}
+function engItem(r,o){
+  const st=ENG_ST[r.status]||ENG_ST['جديد']; const late=r.status!=='تم'&&r.due&&r.due<today();
+  return `<button class="card" style="padding:12px;display:block;width:100%;text-align:start;margin-top:8px" data-act="openReq" data-id="${r.id}">
+    <div class="row" style="align-items:flex-start"><div class="avt" style="background:${r.status==='تم'?'var(--g)':'#4A4E69'};width:36px;height:36px">${ic(r.status==='تم'?'check':'ruler',18)}</div>
+    <div class="grow"><b style="font-weight:500" class="ell">${esc(r.type+' · '+r.customerName)}</b>
+    <div class="small muted">${o.showRep?esc(r.repName||'')+' · ':''}${r.due?`<span style="color:${late?'var(--red)':'inherit'}">${dueLabel(r.due)}</span> · `:''}${fWhen(r.createdAt)}${(r.thread||[]).length?' · '+r.thread.length+' رسالة':''}</div>
+    ${r.note?`<div class="small ell" style="color:#555">${esc(r.note)}</div>`:''}</div>
+    <span class="badge ${st[1]}">${st[0]}</span></div></button>`;
+}
+function openNewEngReq(cid){
+  const c=custCache(cid); if(!c) return;
+  S.er={cid,type:ENG_TYPES[0],loc:c.lat?'cust':'here'};
+  sheet('طلب زيارة مهندس',`<div class="small muted" style="margin-top:10px">${esc(c.name)}</div>
+    <div class="fld"><label>نوع الزيارة</label><div class="chips wrap">${ENG_TYPES.map(t=>`<button class="chip ${t===S.er.type?'on':''}" data-act="erType" data-v="${t}">${t}</button>`).join('')}</div></div>
+    <div class="fld"><label>المطلوب / ملاحظات للمهندس</label><textarea class="inp" id="erNote" placeholder="مثال: رفع مقاس درج المدخل والبلكونة، العميل موجود بعد العصر"></textarea></div>
+    <div class="fld"><label>الموقع</label><div class="seg">${c.lat?`<button data-act="erLoc" data-v="cust" class="${S.er.loc==='cust'?'on':''}">موقع العميل المسجّل</button>`:''}<button data-act="erLoc" data-v="here" class="${S.er.loc==='here'?'on':''}">موقعي دلوقتي</button></div>
+      ${c.lat?'':'<div class="small muted" style="margin-top:6px">موقع العميل لسه ما اتسجلش، فهناخد موقعك الحالي لو إنت عند العميل.</div>'}</div>
+    <div class="fld"><label>ميعاد مقترح (اختياري)</label><input class="inp" type="date" id="erDue" min="${today()}"></div>`,
+    `<button class="btn" data-act="saveEngReq">${ic('check',20)} إرسال للمهندس</button>`);
+}
+async function saveEngReq(btn){
+  const E=S.er; const c=custCache(E.cid); if(!c) return;
+  const note=($('#erNote').value||'').trim(), due=$('#erDue').value||'';
+  btn.disabled=true; btn.textContent='بيبعت…';
+  try{
+    let lat=c.lat||null, lng=c.lng||null;
+    if(E.loc==='here'||!lat){ const r=await getLocation(); if(r.err){ toast(r.err,4000); btn.disabled=false; btn.textContent='إرسال للمهندس'; return; } lat=r.lat; lng=r.lng; }
+    const rep=userById(c.ownerUid)||(c.ownerUid===S.me.id?S.me:null);
+    const engs=await engUsers(); const eng=engs[0]||null;
+    const d={customerId:c.id,customerName:c.name,phone:c.phone||'',lat,lng,repUid:c.ownerUid,repName:rep?rep.name:'',section:secOf(rep),
+      engUid:eng?eng.id:'',type:E.type,note,due,status:due?'متحدد':'جديد',result:'',thread:[],photos:[],byUid:S.me.id,byName:S.me.name,createdAt:'__SV__'};
+    const r=await API.add('engreq',d);
+    engs.forEach(e=>notify(e.id,'📐 طلب '+E.type+' · '+c.name,(rep?rep.name+': ':'')+(note||'طلب زيارة مهندس')+(due?' · '+dueLabel(due):''),{kind:'eng',reqId:r.id}));
+    closeSheet(); toast(eng?'اتبعت الطلب لـ '+eng.name:'اتسجل الطلب (لسه مفيش حساب مهندس)'); renderTab();
+  }catch(e){ toast('مقدرش أبعت: '+(e.message||e),4000); btn.disabled=false; btn.textContent='إرسال للمهندس'; }
+}
+async function openReq(id){
+  const r=await API.get('engreq',id); if(!r) return; S._req=r;
+  const st=ENG_ST[r.status]||ENG_ST['جديد'];
+  const th=(r.thread||[]).slice().sort((a,b)=>a.t-b.t);
+  const canEng=(isEng()||(isAdmin()&&!S.viewAs))&&r.status!=='تم';
+  sheet(esc(r.type)+' · '+esc(r.customerName),`
+    <div class="card" style="margin-top:12px"><dl class="kv">
+      <dt>الحالة</dt><dd><span class="badge ${st[1]}">${st[0]}</span></dd>
+      <dt>المندوب</dt><dd>${esc(r.repName||'-')}</dd>
+      ${r.phone?`<dt>جوال العميل</dt><dd dir="ltr" style="text-align:right"><a href="tel:+${normPhone(r.phone)}" style="color:var(--g)">${esc(r.phone)}</a></dd>`:''}
+      <dt>الميعاد</dt><dd>${r.due?dueLabel(r.due):'مش متحدد'}</dd>
+      ${r.lat?`<dt>الموقع</dt><dd><a href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}" target="_blank" rel="noopener" style="color:var(--g)">الاتجاهات على الخريطة</a></dd>`:''}
+      ${r.note?`<dt>المطلوب</dt><dd>${esc(r.note)}</dd>`:''}
+      ${r.result?`<dt>النتيجة</dt><dd>${esc(r.result)}${r.doneBy?' <span class="small muted">· '+esc(r.doneBy)+'</span>':''}</dd>`:''}
+    </dl></div>
+    ${(r.photos||[]).length?`<div style="display:flex;gap:8px;margin-top:10px;overflow:auto">${r.photos.map(p=>`<a href="${p}" target="_blank"><img src="${p}" style="height:110px;border-radius:12px"></a>`).join('')}</div>`:''}
+    ${canEng?`<div class="fld"><label>تحديد ميعاد</label><div class="row" style="gap:8px"><input class="inp" type="date" id="rqDue" min="${today()}" value="${r.due||''}"><button class="btn sm sec2" style="width:auto" data-act="reqSched" data-id="${r.id}">حفظ</button></div></div>`:''}
+    <div class="sec"><h3>المحادثة</h3>${th.length?`<span class="cnt">${th.length}</span>`:''}</div>
+    <div id="rqTh">${th.length?th.map(m=>`<div class="cm ${m.uid===S.me.id?'me':''} ${m.role==='admin'?'adm':''}"><div class="cmh"><b>${esc(m.name)}</b>${m.role==='eng'?' · المهندس':m.role==='admin'?' · مدير':''}<span>${fWhen(m.t)}</span></div><div class="cmt">${esc(m.text)}</div></div>`).join(''):'<div class="small muted" style="padding:6px 2px">لسه مفيش رسايل.</div>'}</div>
+    <div class="cmbox"><textarea class="inp" id="rqIn" placeholder="اكتب رسالة…"></textarea><button class="btn sm" data-act="reqMsg" data-id="${r.id}" style="width:auto;padding:0 14px;height:44px">إرسال</button></div>`,
+    canEng?`<button class="btn" data-act="reqDone" data-id="${r.id}">${ic('check',20)} تم · سجّل النتيجة</button>`:'');
+}
+function reqTargets(r){ const t=[]; if(r.repUid&&S.me.id!==r.repUid) t.push(r.repUid); if(r.engUid&&S.me.id!==r.engUid) t.push(r.engUid); return t; }
+async function reqMsg(id){
+  const r=S._req; const inp=$('#rqIn'); const text=(inp&&inp.value||'').trim(); if(!text){ toast('اكتب الرسالة الأول'); return; }
+  try{
+    await API.arrayAdd('engreq',id,'thread',{uid:S.me.id,name:S.me.name,role:S.me.role,text,t:Date.now()});
+    reqTargets(r).forEach(u=>notify(u,'💬 '+S.me.name.split(' ')[0]+' · '+r.customerName,text,{kind:'eng',reqId:id}));
+    openReq(id);
+  }catch(e){ toast('مقدرش أبعت: '+(e.message||e)); }
+}
+async function reqSched(id,btn){
+  const r=S._req; const due=$('#rqDue').value; if(!due){ toast('اختار التاريخ'); return; }
+  btn.disabled=true;
+  try{ await API.update('engreq',id,{due,status:'متحدد'}); notify(r.repUid,'📅 ميعاد زيارة المهندس · '+r.customerName,r.type+' · '+dueLabel(due),{kind:'eng',reqId:id}); toast('اتحفظ الميعاد'); openReq(id); renderTab(); }
+  catch(e){ toast('مقدرش أحفظ: '+(e.message||e)); btn.disabled=false; }
+}
+function openReqDone(id){
+  S.rd={id,photos:[]};
+  sheet('تم · '+esc(S._req.customerName),`<div class="fld"><label>النتيجة / المقاسات <i>*</i></label><textarea class="inp" id="rdRes" placeholder="مثال: الدرج 14 درجة × 1.20 م، البلكونة 3.40 × 1.10 م"></textarea></div>
+    <div class="fld"><label>صور (اختياري، لحد 3)</label><div class="photo" style="min-height:90px"><div id="rdPh">${ic('cam',26)}<div>صوّر أو اختار</div></div><input type="file" accept="image/*" id="rdF" multiple></div></div>`,
+    `<button class="btn" data-act="saveReqDone">${ic('check',20)} حفظ وإبلاغ المندوب</button>`);
+  $('#rdF').addEventListener('change',async e=>{
+    for(const f of [...e.target.files].slice(0,3-S.rd.photos.length)){ try{ S.rd.photos.push(shrink(await loadImg(f),1000,.6)); }catch(_){} }
+    $('#rdPh').innerHTML=S.rd.photos.map(p=>`<img src="${p}" style="height:70px;border-radius:8px;margin:2px">`).join('');
+  });
+}
+async function saveReqDone(btn){
+  const r=S._req; const res=($('#rdRes').value||'').trim(); if(!res){ toast('اكتب النتيجة'); return; }
+  btn.disabled=true;
+  try{
+    await API.update('engreq',S.rd.id,{status:'تم',result:res,photos:S.rd.photos,doneAt:Date.now(),doneBy:S.me.name});
+    notify(r.repUid,'✅ المهندس خلّص · '+r.customerName,r.type+': '+res,{kind:'eng',reqId:r.id});
+    if(!isAdmin()) notify(ADMINS,'✅ '+r.type+' · '+r.customerName,res,{kind:'eng',reqId:r.id});
+    closeSheet(); toast('اتسجل ✓'); renderTab();
+  }catch(e){ toast('مقدرش أحفظ: '+(e.message||e),4000); btn.disabled=false; }
+}
+async function engList(){
+  return (await API.query('engreq')).sort((a,b)=>{ if((a.status==='تم')!==(b.status==='تم')) return a.status==='تم'?1:-1; const x=a.due||'9', y=b.due||'9'; return x<y?-1:x>y?1:(b.createdAt||0)-(a.createdAt||0); });
+}
+async function engHome(m){
+  const all=await engList(); const f=S.engF||'open';
+  const list=all.filter(r=>f==='open'?r.status!=='تم':r.status==='تم');
+  const h=new Date().getHours(), nOpen=all.filter(r=>r.status!=='تم').length, nToday=all.filter(r=>r.status!=='تم'&&r.due===today()).length;
+  m.innerHTML=`<div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(S.me.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
+  <div class="stats"><div class="st"><b>${nOpen}</b><span>طلبات مفتوحة</span></div><div class="st gold"><b>${nToday}</b><span>مواعيد النهارده</span></div></div>
+  <div class="chips" style="margin-top:12px"><button class="chip ${f==='open'?'on':''}" data-act="engF" data-v="open">المفتوحة</button><button class="chip ${f==='done'?'on':''}" data-act="engF" data-v="done">اللي خلصت</button></div>
+  <div style="margin-top:4px">${list.length?list.map(r=>engItem(r,{showRep:true})).join(''):`<div class="card empty" style="margin-top:8px">${ic('ruler',30)}${f==='open'?'مفيش طلبات مفتوحة':'لسه مفيش طلبات خلصت'}</div>`}</div>`;
+}
+async function engMap(m){
+  const list=(await engList()).filter(r=>r.status!=='تم'&&r.lat);
+  m.innerHTML=`<div id="map"></div><div class="small muted" style="margin:8px 4px">أماكن الطلبات المفتوحة · دوس على العلامة للتفاصيل</div>${list.map(r=>engItem(r,{showRep:true})).join('')}`;
+  const el=$('#map');
+  try{ if(!window.L){ loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'); await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'); } }catch(e){ el.innerHTML='<div class="empty">الخريطة محتاجة إنترنت</div>'; return; }
+  if(S._map){ S._map.remove(); S._map=null; }
+  const map=L.map(el,{zoomControl:false}).setView([24.7136,46.6753],11); S._map=map;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  L.control.zoom({position:'bottomleft'}).addTo(map);
+  const pts=list.map(r=>{ L.marker([r.lat,r.lng],{icon:L.divIcon({className:'',html:`<div class="pinmk" style="background:${r.due&&r.due<=today()?'#C0392B':'#4A4E69'}"><span></span></div>`,iconSize:[28,28],iconAnchor:[14,28]})}).addTo(map)
+    .bindPopup(`<div style="direction:rtl;text-align:right"><b>${esc(r.customerName)}</b><br>${esc(r.type)} · ${esc(r.repName||'')}${r.due?'<br>'+dueLabel(r.due):''}<br><a href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}" target="_blank">الاتجاهات</a></div>`); return [r.lat,r.lng]; });
+  if(pts.length) map.fitBounds(pts,{padding:[40,40],maxZoom:15});
+  setTimeout(()=>map.invalidateSize(),200);
+}
+async function adminEngCard(){
+  let l=[]; try{ l=(await API.query('engreq')).filter(r=>(r.section||'rp')===curSec()); }catch(e){}
+  if(!l.length&&!S.users.some(u=>u.role==='eng')) return '';
+  const open=l.filter(r=>r.status!=='تم').length, done=l.filter(r=>r.status==='تم'&&r.doneAt&&r.doneAt>=startOfDay()).length;
+  return `<button class="it" data-act="openEngAdmin" style="margin-top:10px"><div class="avt" style="background:#4A4E69">${ic('ruler',20)}</div><div class="grow"><b>طلبات المهندس</b><span class="meta">${open} مفتوحة · ${done} خلصت النهارده</span></div></button>`;
+}
+async function openEngAdmin(){
+  const l=(await engList()).filter(r=>(r.section||'rp')===curSec());
+  sheet('طلبات المهندس · '+esc(secLabel(curSec())),`<div style="margin-top:4px">${l.length?l.map(r=>engItem(r,{showRep:true})).join(''):'<div class="card empty" style="margin-top:8px">لسه مفيش طلبات</div>'}</div>`,'',{full:true});
+}
+async function repEngCard(uid){
+  if(isAdmin()&&!S.viewAs) return '';
+  let l=[]; try{ l=(await API.query('engreq',[['repUid','==',uid]])).filter(r=>r.status!=='تم'||(r.doneAt&&r.doneAt>=Date.now()-3*DAY)); }catch(e){}
+  if(!l.length) return '';
+  return `<div class="sec"><h3>طلبات المهندس</h3><span class="cnt">${l.length}</span></div>${l.map(r=>engItem(r,{})).join('')}`;
 }
 
 /* ================= قايمة الأقسام (محمود وأحمد كامل) ================= */
@@ -1140,7 +1294,7 @@ async function openVisit(id){
 async function openCust(id){
   let c=custCache(id) || await API.get('customers',id);
   if(!c) return; S._openC=c;
-  const [cms,ctasks]=await Promise.all([loadComments(c), API.query('tasks',[['customerId','==',id]].concat(isMeAdmin()?[]:[['repUid','==',S.me.id]])).catch(()=>[])]);
+  const [cms,ctasks,ereqs]=await Promise.all([loadComments(c), API.query('tasks',[['customerId','==',id]].concat(isMeAdmin()?[]:[['repUid','==',S.me.id]])).catch(()=>[]), API.query('engreq',[['customerId','==',id]].concat(isMeAdmin()?[]:[['repUid','==',S.me.id]])).then(l=>l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))).catch(()=>[])]);
   S._tasks=(S._tasks||[]).filter(t=>t.customerId!==id).concat(ctasks);
   markSeen(c);
   const vs=(await API.query('visits',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]]))).sort((a,b)=>b.createdAt-a.createdAt);
@@ -1162,6 +1316,8 @@ async function openCust(id){
     </dl></div>
     ${mine?`<div class="btns" style="margin-top:12px">${ph?`<a class="btn sm sec2" href="tel:+${ph}" data-act="tapLog" data-k="call" data-id="${c.id}">${ic('phone',16)} اتصال</a><a class="btn sm sec2" href="https://wa.me/${ph}" target="_blank" rel="noopener" data-act="tapLog" data-k="wa" data-id="${c.id}">${ic('wa',16)} واتساب</a>`:''}<button class="btn sm" data-act="visitCust" data-id="${c.id}">${ic('pin',16)} زيارة</button></div>`:''}
     ${isAdmin()&&!S.viewAs&&c.ownerUid?`<div class="btns" style="margin-top:10px"><button class="btn sm gold" data-act="newTask" data-id="${c.id}">${ic('pinpaper',16)} مهمة للمندوب</button></div>`:''}
+    ${(mine||isAdmin())&&c.ownerUid?`<div class="btns" style="margin-top:10px"><button class="btn sm sec2" data-act="newEngReq" data-id="${c.id}">${ic('ruler',16)} طلب زيارة مهندس</button></div>`:''}
+    ${ereqs.length?`<div class="sec"><h3>طلبات المهندس</h3><span class="cnt">${ereqs.length}</span></div>${ereqs.map(r=>engItem(r,{})).join('')}`:''}
     ${ctasks.length?`<div class="sec"><h3>المهام</h3><span class="cnt">${ctasks.length}</span></div>${ctasks.sort(taskSort).map(t=>taskItem(t,{showRep:isMeAdmin()&&!S.viewAs,canDo:!(isMeAdmin()&&!S.viewAs)})).join('')}`:''}
     <div class="sec"><h3>التعليقات</h3>${cms.length?`<span class="cnt">${cms.length}</span>`:''}</div>
     <div id="cmList">${commentsHtml(cms)}</div>
@@ -1197,10 +1353,11 @@ async function saveContact(){
 /* ---- حساب المندوب ---- */
 async function openCreateRep(name='',u='',role='rep'){
   S.crRole=role;
-  sheet(role==='admin'?'حساب مدير جديد':'حساب مندوب جديد',`
+  sheet(role==='admin'?'حساب مدير جديد':role==='eng'?'حساب مهندس جديد':'حساب مندوب جديد',`
     ${role==='admin'?`<div class="warnbox" style="margin-top:12px">${ic('key',18)}<div>حساب المدير بيشوف كل حاجة وله كل صلاحياتك: كل المناديب والعملاء والزيارات، والتعليقات والمهام، وفتح شاشات المناديب.</div></div>
     <div class="fld"><label>يشوف</label><select class="inp" id="crS"><option value="all">كل الأقسام</option>${SECTIONS.map(x=>`<option value="${x.id}" ${x.id===curSec()?'selected':''}>${esc(secLabel(x.id))} بس</option>`).join('')}</select></div>
-    <div class="fld"><label>المسمى الوظيفي</label><input class="inp" id="crT" value="مدير القسم"></div>`:`<div class="small muted" style="margin-top:10px">المندوب هيتضاف على قسم: <b style="font-weight:500">${esc(secLabel(curSec()))}</b></div>
+    <div class="fld"><label>المسمى الوظيفي</label><input class="inp" id="crT" value="مدير القسم"></div>`:role==='eng'?`<div class="small muted" style="margin-top:10px">المهندس بيشوف طلبات الزيارة اللي المناديب بيبعتوهاله بس، ومش بيشوف داتا العملاء ولا التنشيط.</div>
+    <div class="fld"><label>المسمى</label><input class="inp" id="crT" value="مهندس القسم الهندسي"></div>`:`<div class="small muted" style="margin-top:10px">المندوب هيتضاف على قسم: <b style="font-weight:500">${esc(secLabel(curSec()))}</b></div>
     <div class="fld"><label>المسمى (اختياري)</label><input class="inp" id="crT" placeholder="مثال: مسؤول مبيعات"></div>`}
     <div class="fld"><label>الاسم <i>*</i></label><input class="inp" id="crN" value="${esc(name)}"></div>
     <div class="fld"><label>اسم المستخدم (إنجليزي بدون مسافات) <i>*</i></label><input class="inp" id="crU" dir="ltr" autocapitalize="off" value="${esc(u)}"></div>
@@ -1210,7 +1367,7 @@ async function openCreateRep(name='',u='',role='rep'){
 }
 async function doCreateRep(btn){
   const name=$('#crN').value.trim(), u=$('#crU').value.trim().toLowerCase(), phone=$('#crP').value.trim(), pw=$('#crPw').value.trim();
-  const role=S.crRole==='admin'?'admin':'rep', title=(($('#crT')||{}).value||'').trim(), section=role==='admin'?(($('#crS')||{}).value||'all'):curSec();
+  const role=['admin','eng'].includes(S.crRole)?S.crRole:'rep', title=(($('#crT')||{}).value||'').trim(), section=role==='admin'?(($('#crS')||{}).value||'all'):role==='eng'?'all':curSec();
   if(!name||!/^[a-z0-9._-]{3,}$/.test(u)){ toast('اكتب الاسم واسم مستخدم إنجليزي (3 حروف على الأقل)'); return; }
   if(pw.length<6){ toast('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
   btn.disabled=true; btn.innerHTML='<span class="spin" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>';
@@ -1727,6 +1884,18 @@ document.addEventListener('click',async e=>{
     case 'viewAs': S.viewAs=userById(d.id); S.tab='home'; closeSheet(true); render(); window.scrollTo(0,0); break;
     case 'exitView': S.viewAs=null; S.tab='home'; render(); break;
     case 'openSecs': openSecs(); break;
+    case 'createEngAcc': openCreateRep('','','eng'); break;
+    case 'newEngReq': closeSheet(true); openNewEngReq(d.id); break;
+    case 'erType': S.er.type=d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b===t)); break;
+    case 'erLoc': S.er.loc=d.v; t.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===t)); break;
+    case 'saveEngReq': saveEngReq(t); break;
+    case 'openReq': closeSheet(true); openReq(d.id); break;
+    case 'reqMsg': reqMsg(d.id); break;
+    case 'reqSched': reqSched(d.id,t); break;
+    case 'reqDone': closeSheet(true); openReqDone(d.id); break;
+    case 'saveReqDone': saveReqDone(t); break;
+    case 'engF': S.engF=d.v; renderTab(); break;
+    case 'openEngAdmin': openEngAdmin(); break;
     case 'pickSec': S.sec=d.v; try{ localStorage.setItem('ma_sec',d.v); }catch(e){} S.filt={}; S.mapRep='all'; S.actRep='all'; closeSecs(); render(); window.scrollTo(0,0); break;
     case 'closeSecs': closeSecs(); break;
     case 'routeOf': S.tab='map'; S.mapRep=d.id; S.mapDay= S.period==='yesterday'?addDays(-1):today(); render(); break;
