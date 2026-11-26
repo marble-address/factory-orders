@@ -930,7 +930,7 @@ async function adminAct(m){
 }
 
 async function adminTeam(m){
-  S.users=await API.query('users');
+  S.users=await API.query('users',[],{fresh:true});
   const rs=reps(); const existing=new Set(rs.map(r=>r.username));
   const pending=curSec()==='rp'?REPS_SEED.filter(r=>!existing.has(r.username)):[];
   m.innerHTML=`<div class="sec" style="margin-top:4px"><h3>مناديب ${esc(secLabel(curSec()))}</h3><span class="cnt">${rs.length}</span></div>
@@ -1354,7 +1354,7 @@ async function saveContact(){
 async function openCreateRep(name='',u='',role='rep'){
   S.crRole=role;
   sheet(role==='admin'?'حساب مدير جديد':role==='eng'?'حساب مهندس جديد':'حساب مندوب جديد',`
-    ${role==='admin'?`<div class="warnbox" style="margin-top:12px">${ic('key',18)}<div>حساب المدير بيشوف كل حاجة وله كل صلاحياتك: كل المناديب والعملاء والزيارات، والتعليقات والمهام، وفتح شاشات المناديب.</div></div>
+    ${role==='admin'?`<div class="warnbox" style="margin-top:12px">${ic('key',18)}<div>حساب المدير بيشوف القسم اللي هتختاره تحت بكل صلاحياته: المناديب والعملاء والزيارات، والتعليقات والمهام، وفتح شاشات المناديب. «كل الأقسام» يعني يشوف الشركة كلها زيك.</div></div>
     <div class="fld"><label>يشوف</label><select class="inp" id="crS"><option value="all">كل الأقسام</option>${SECTIONS.map(x=>`<option value="${x.id}" ${x.id===curSec()?'selected':''}>${esc(secLabel(x.id))} بس</option>`).join('')}</select></div>
     <div class="fld"><label>المسمى الوظيفي</label><input class="inp" id="crT" value="مدير القسم"></div>`:role==='eng'?`<div class="small muted" style="margin-top:10px">المهندس بيشوف طلبات الزيارة اللي المناديب بيبعتوهاله بس، ومش بيشوف داتا العملاء ولا التنشيط.</div>
     <div class="fld"><label>المسمى</label><input class="inp" id="crT" value="مهندس القسم الهندسي"></div>`:`<div class="small muted" style="margin-top:10px">المندوب هيتضاف على قسم: <b style="font-weight:500">${esc(secLabel(curSec()))}</b></div>
@@ -1373,7 +1373,7 @@ async function doCreateRep(btn){
   btn.disabled=true; btn.innerHTML='<span class="spin" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>';
   try{
     await API.createRep({name,username:u,phone,password:pw,role,title,section});
-    S.users=await API.query('users');
+    S.users=await API.query('users',[],{fresh:true});
     const link=location.href.split('#')[0].split('?')[0].replace('/visits-beta/','/visits/');
     const msg=`أهلاً ${name.split(' ')[0]} 👋\nده تطبيق «قسم المشاريع» – عنوان الرخام:\n${link}\n\nاسم المستخدم: ${u}\nكلمة المرور: ${pw}\n\nافتح اللينك من Safari أو Chrome وضيفه للشاشة الرئيسية.`;
     $('#shb').innerHTML=`<div class="success"><div class="ck">${ic('check',40,2.2)}</div><h3 style="font-weight:500;margin:0">اتعمل حساب ${esc(name)}</h3></div>
