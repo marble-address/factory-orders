@@ -49,7 +49,8 @@ function loadUsers_() {
     (r.documents || []).forEach(function (d) {
       var f = d.fields || {};
       var toks = ((f.fcmTokens && f.fcmTokens.arrayValue && f.fcmTokens.arrayValue.values) || []).map(function (v) { return v.stringValue; });
-      out.push({ id: d.name.split('/').pop(), role: val_(f.role), tokens: toks });
+      out.push({ id: d.name.split('/').pop(), role: val_(f.role), tokens: toks, name: val_(f.name) || '',
+        active: f.active ? f.active.booleanValue : true, attendance: f.attendance ? f.attendance.booleanValue : true, test: !!(f.test && f.test.booleanValue) });
     });
     token = r.nextPageToken || '';
   } while (token);
@@ -92,4 +93,57 @@ function setup() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'sendPending') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('sendPending').timeBased().everyMinutes(5).create();
   return 'تمام: ' + sendPending();
+}
+
+/* ===== تذكيرات بصمة الحضور =====
+   - 8 الصبح: كل مندوب (مفعّل وبصمته شغالة) لسه ما بصمش → إشعار «متنساش البصمة»
+   - 9 الصبح: المديرين → مين لسه ما بصمش
+   - الجمعة إجازة: مفيش تذكيرات
+   المشغّل بيشتغل كل ربع ساعة والدالة بتقرر حسب الساعة (توقيت الرياض)، ومش بتبعت مرتين في نفس اليوم */
+function attendanceReminders() {
+  var tz = 'Asia/Riyadh', now = new Date();
+  var hour = Number(Utilities.formatDate(now, tz, 'H'));
+  var dow = Number(Utilities.formatDate(now, tz, 'u'));   // 1=الاتنين … 5=الجمعة … 7=الحد
+  var day = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  if (dow === 5) return 'جمعة';
+  var props = PropertiesService.getScriptProperties();
+  var out = [];
+  if (hour >= 8 && hour < 12 && props.getProperty('att8') !== day) {
+    var miss = missingReps_(day);
+    miss.forEach(function (u) {
+      addNotif_(u.id, 'صباح الخير يا ' + u.name.split(' ')[0] + ' 👋', 'متنساش تعمل بصمة الحضور: افتح التطبيق ودوس «بصمة»');
+    });
+    props.setProperty('att8', day); out.push('8: ' + miss.length);
+  }
+  if (hour >= 9 && hour < 12 && props.getProperty('att9') !== day) {
+    var miss9 = missingReps_(day);
+    if (miss9.length) addNotif_('ADMINS', 'لسه ما بصمش: ' + miss9.length + ' مندوب',
+      miss9.map(function (u) { return u.name; }).join('، '));
+    props.setProperty('att9', day); out.push('9: ' + miss9.length);
+  }
+  if (out.length) sendPending();
+  return out.join(' | ') || 'مفيش';
+}
+
+function missingReps_(day) {
+  var users = loadUsers_().filter(function (u) { return u.role === 'rep' && u.active !== false && u.attendance !== false && !u.test; });
+  return users.filter(function (u) {
+    var r = UrlFetchApp.fetch(FS + '/attendance/' + u.id + '_' + day + '?mask.fieldPaths=inAt', { muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'x-goog-user-project': PROJECT } });
+    return r.getResponseCode() === 404;
+  });
+}
+
+function addNotif_(toUid, title, body) {
+  api_('post', FS + '/notifs', { fields: {
+    toUid: { stringValue: toUid }, fromUid: { stringValue: 'SYSTEM' }, fromName: { stringValue: 'قسم المشاريع' },
+    title: { stringValue: title }, body: { stringValue: String(body).slice(0, 240) }, kind: { stringValue: 'att' },
+    read: { booleanValue: false }, pushed: { booleanValue: false }, createdAt: { timestampValue: new Date().toISOString() } } });
+}
+
+/* شغّلها مرة واحدة: مشغّل كل ربع ساعة لتذكيرات البصمة */
+function setupAttendance() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'attendanceReminders') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('attendanceReminders').timeBased().everyMinutes(15).create();
+  return 'تمام';
 }
