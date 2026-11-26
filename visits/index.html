@@ -445,12 +445,13 @@ function liveAPI(){
     async createAdmin(p){ const c=await auth.createUserWithEmailAndPassword(em(ADMIN_USERNAME),p); await fs.collection('users').doc(c.user.uid).set({name:ADMIN_NAME,username:ADMIN_USERNAME,role:'admin',active:true,createdAt:SV()}); },
     async logout(){ await auth.signOut(); },
     async changePassword(p){ await auth.currentUser.updatePassword(p); },
+    async idToken(){ return auth.currentUser.getIdToken(); },
     async createRep(d){
       let sec = firebase.apps.find(a=>a.name==='sec') || firebase.initializeApp(FIREBASE_CONFIG,'sec');
       const c = await sec.auth().createUserWithEmailAndPassword(em(d.username),d.password);
       const id=c.user.uid;
       try{
-        await fs.collection('users').doc(id).set({name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:d.role||'rep',title:d.title||'',section:d.section||'rp',active:true,createdAt:SV()});
+        await fs.collection('users').doc(id).set({name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:d.role||'rep',title:d.title||'',section:d.section||'rp',active:true,mustSetPw:true,createdAt:SV()});
       }catch(e){ try{ await c.user.delete(); }catch(_){} try{ await sec.auth().signOut(); }catch(_){} throw e; }   // لو الحفظ فشل، نمسح حساب الدخول عشان الاسم ما يتحجزش
       await sec.auth().signOut();
       return id;
@@ -579,12 +580,19 @@ async function boot(){
       Object.assign(API,liveAPI());
     }catch(e){ $('#app').innerHTML='<div class="empty" style="padding-top:30vh">مفيش اتصال بالإنترنت. افتح التطبيق تاني لما النت يرجع.</div>'; return; }
   } else Object.assign(API,demoAPI());
+  const invM=/[#&]login=([^&]+)/.exec(location.hash||'');
+  if(invM){
+    try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    let inv=null; try{ const t=decodeURIComponent(escape(atob(decodeURIComponent(invM[1])))); const i=t.indexOf(':'); inv={u:t.slice(0,i),p:t.slice(i+1)}; }catch(e){}
+    if(inv&&API.mode==='live'){ try{ await API.logout(); }catch(e){} try{ await API.login(inv.u,inv.p); }catch(e){ S._invErr=true; } }
+  }
   API.onAuth(async u=>{
-    if(!u){ S.me=null; renderLogin(); return; }
+    if(!u){ S.me=null; renderLogin(S._invErr?'اللينك ده اتستخدم قبل كده أو اتلغى. اطلب لينك جديد من المدير.':undefined); S._invErr=false; return; }
     try{
       const me = await API.get('users',u.uid);
       if(!me || me.active===false){ renderLogin('الحساب ده مش مفعّل. كلّم مدير المشاريع.'); await API.logout(); return; }
       S.me=me; S.tab='home'; S.viewAs=null;
+      if(me.mustSetPw && API.mode==='live'){ renderSetPw(); return; }
       S.users = isAdmin() ? await API.query('users') : [me];
       render(); startHeartbeat(); if(!BETA) silentPushRefresh(); handleDeepLink();
     }catch(e){ console.error(e); renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
@@ -937,17 +945,66 @@ async function adminTeam(m){
   ${rs.map(r=>`<div class="rep"><div class="top"><div class="avt" style="background:${r.active?repColor(r.id):'#B9B3A5'}">${esc(initials(r.name))}</div>
     <div class="grow"><b style="font-weight:500">${esc(r.name)}</b><div class="small muted">${r.title?esc(r.title)+' · ':''}اسم المستخدم: <span dir="ltr">${esc(r.username)}</span>${r.phone?` · <span dir="ltr">${esc(r.phone)}</span>`:''}</div></div>
     ${r.active?'<span class="badge">مفعّل</span>':'<span class="badge grey">موقوف</span>'}</div>
-    <div class="acts"><button data-act="viewAs" data-id="${r.id}">${ic('eye',16)} افتح شاشته</button><button data-act="editRep" data-id="${r.id}">${ic('user',16)} تعديل</button></div></div>`).join('')}
+    <div class="acts"><button data-act="viewAs" data-id="${r.id}">${ic('eye',16)} افتح شاشته</button><button data-act="editRep" data-id="${r.id}">${ic('user',16)} تعديل</button><button data-act="resetLink" data-id="${r.id}">${ic('key',16)} لينك دخول</button></div></div>`).join('')}
   ${pending.length?`<div class="sec"><h3>لسه ما اتعملش حسابهم</h3></div>${pending.map(r=>`<div class="rep"><div class="top"><div class="avt" style="background:#C9C2B0">${esc(initials(r.name))}</div><div class="grow"><b style="font-weight:500">${esc(r.name)}</b><div class="small muted">اسم المستخدم المقترح: <span dir="ltr">${r.username}</span></div></div><button class="btn sm" data-act="createRep" data-name="${esc(r.name)}" data-u="${r.username}">إنشاء الحساب</button></div></div>`).join('')}`:''}
   <div style="margin-top:14px"><button class="btn sec2" data-act="createRep">${ic('plus',18)} إضافة مندوب جديد</button></div>
   ${attTestView()&&curSec()==='rp'?`<div class="sec"><h3>حساب التجربة</h3></div>${S.users.filter(u=>u.test).map(u=>`<div class="rep"><div class="top"><div class="avt" style="background:#9A8F78">${esc(initials(u.name))}</div><div class="grow"><b style="font-weight:500">${esc(u.name)}</b><div class="small muted">مش ظاهر في أرقام المناديب · البصمة شغالة عليه</div></div><button class="btn sm sec2" style="width:auto" data-act="viewAs" data-id="${u.id}">${ic('eye',16)} افتح شاشته</button></div></div>`).join('')||`<button class="btn sec2" data-act="mkTestRep">${ic('plus',18)} اعمل حساب «مندوب تجربة»</button>`}`:''}
   ${isTop()?`<div class="sec"><h3>المهندسين</h3><span class="cnt">${S.users.filter(u=>u.role==='eng').length}</span></div>
-  ${S.users.filter(u=>u.role==='eng').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:#4A4E69">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مهندس')} · <span dir="ltr">${esc(a.username)}</span></div></div><button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button></div></div>`).join('')}
+  ${S.users.filter(u=>u.role==='eng').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:#4A4E69">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مهندس')} · <span dir="ltr">${esc(a.username)}</span></div></div><button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button><button class="btn sm sec2" style="width:auto;margin-inline-start:6px" data-act="resetLink" data-id="${a.id}" aria-label="لينك دخول">${ic('key',16)}</button></div></div>`).join('')}
   <div style="margin-top:10px"><button class="btn sec2" data-act="createEngAcc">${ic('ruler',18)} إضافة مهندس</button></div>`:''}
   ${isTop()?`<div class="sec"><h3>حسابات المديرين</h3><span class="cnt">${S.users.filter(u=>u.role==='admin').length}</span></div>
-  ${S.users.filter(u=>u.role==='admin').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:var(--gold)">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مدير المشاريع')} · ${a.section&&a.section!=='all'?esc(secLabel(a.section)):'كل الأقسام'} · <span dir="ltr">${esc(a.username)}</span>${a.id===S.me.id?' · إنت':''}</div></div>${a.id!==S.me.id?`<button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button>`:''}</div></div>`).join('')}
+  ${S.users.filter(u=>u.role==='admin').map(a=>`<div class="rep"><div class="top"><div class="avt" style="background:var(--gold)">${esc(initials(a.name))}</div><div class="grow"><b style="font-weight:500">${esc(a.name)}</b><div class="small muted">${esc(a.title||'مدير المشاريع')} · ${a.section&&a.section!=='all'?esc(secLabel(a.section)):'كل الأقسام'} · <span dir="ltr">${esc(a.username)}</span>${a.id===S.me.id?' · إنت':''}</div></div>${a.id!==S.me.id?`<button class="btn sm sec2" style="width:auto" data-act="editRep" data-id="${a.id}">تعديل</button><button class="btn sm sec2" style="width:auto;margin-inline-start:6px" data-act="resetLink" data-id="${a.id}" aria-label="لينك دخول">${ic('key',16)}</button>`:''}</div></div>`).join('')}
   <div style="margin-top:10px"><button class="btn sec2" data-act="createAdminAcc">${ic('key',18)} إضافة مدير</button></div>`:''}
   <div class="card" style="margin-top:16px"><div class="row">${ic('pin',20)}<div class="grow small">أقصى مسافة مسموحة بين المندوب وموقع العميل: <b>${MAX_DIST} متر</b>. أي زيارة أبعد من كده بتتعلّم «ملاحظة» عندك.</div></div></div>`;
+}
+
+
+/* ================= لينك الدخول وكلمة المرور ================= */
+function inviteLink(u,p){ return location.href.split('#')[0].split('?')[0]+'#login='+encodeURIComponent(btoa(unescape(encodeURIComponent(u+':'+p)))); }
+function inviteMsg(name,u,link){ return `أهلاً ${name.split(' ')[0]} 👋\nده لينك دخولك على تطبيق عنوان الرخام:\n${link}\n\nافتحه من الموبايل، واعمل كلمة المرور بتاعتك. اسم المستخدم بتاعك: ${u}\nاللينك بيشتغل مرة واحدة بس، متبعتهوش لحد.`; }
+function renderSetPw(msg){
+  $('#app').innerHTML=`<div class="login">
+    <div class="lg"><img src="${LOGO}" alt="عنوان الرخام"><h1>أهلاً يا ${esc(S.me.name.split(' ')[0])}</h1><p>اعمل كلمة المرور بتاعتك</p></div>
+    <div class="box">
+      <div class="small muted" style="margin-bottom:10px">اسم المستخدم بتاعك: <b dir="ltr" style="font-weight:500">${esc(S.me.username)}</b> · احفظه، هتدخل بيه مع كلمة المرور دي بعد كده.</div>
+      <div class="fld" style="margin-top:0"><label>كلمة المرور الجديدة</label><input class="inp" id="sp1" type="password" dir="ltr" autocomplete="new-password" placeholder="6 حروف أو أرقام على الأقل"></div>
+      <div class="fld"><label>اكتبها تاني</label><input class="inp" id="sp2" type="password" dir="ltr" autocomplete="new-password"></div>
+      <div class="err" id="lerr">${esc(msg||'')}</div>
+      <div style="margin-top:16px"><button class="btn" data-act="setPw">حفظ ودخول</button></div>
+    </div>
+    <div class="foot">شركة العنوان الصحيح للرخام والحجر</div>
+  </div>`;
+}
+async function doSetPw(btn){
+  const a=$('#sp1').value, b=$('#sp2').value;
+  if(a.length<6){ $('#lerr').textContent='كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'; return; }
+  if(a!==b){ $('#lerr').textContent='الكلمتين مش زي بعض'; return; }
+  btn.disabled=true; btn.textContent='بيحفظ…';
+  try{
+    await API.changePassword(a);
+    await API.update('users',S.me.id,{mustSetPw:false}); S.me.mustSetPw=false;
+    S.users = isAdmin() ? await API.query('users',[],{fresh:true}) : [S.me];
+    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); if(!BETA) silentPushRefresh();
+  }catch(e){
+    if(e&&e.code==='auth/requires-recent-login'){ await API.logout(); renderLogin('اطلب لينك دخول جديد من المدير.'); return; }
+    btn.disabled=false; btn.textContent='حفظ ودخول'; $('#lerr').textContent='مقدرش أحفظ: '+(e.message||e);
+  }
+}
+function openResetLink(id){
+  const r=userById(id); if(!r) return;
+  sheet('لينك دخول · '+esc(r.name),`<div class="warnbox" style="margin-top:12px">${ic('key',18)}<div>هيتعمل لينك جديد لـ ${esc(r.name)} يعمل منه كلمة مرور جديدة. كلمة المرور القديمة هتتلغي، واللينك بيشتغل مرة واحدة بس.</div></div>`,
+    `<button class="btn" data-act="doResetLink" data-id="${id}">${ic('key',18)} اعمل اللينك</button>`);
+}
+async function doResetLink(btn,id){
+  const r=userById(id); btn.disabled=true; btn.innerHTML='<span class="spin" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>';
+  try{
+    const tok=await API.idToken();
+    const res=await fetch(PUSH_PING_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'reset',idToken:tok,uid:id})}).then(x=>x.json());
+    if(!res.ok) throw new Error(res.err||'مقدرش');
+    const msg=inviteMsg(r.name,res.username,inviteLink(res.username,res.password));
+    $('#shb').innerHTML=`<div class="success"><div class="ck">${ic('check',40,2.2)}</div><h3 style="font-weight:500;margin:0">اللينك جاهز</h3></div><div class="card"><div class="small muted">ابعتله الرسالة دي:</div><div style="white-space:pre-wrap;margin-top:8px;font-size:13px" id="shareMsg">${esc(msg)}</div></div>`;
+    $('#shf').innerHTML=`<div class="btns"><button class="btn sec2" data-act="copyMsg">${ic('copy',18)} نسخ</button><a class="btn" href="https://wa.me/${r.phone?normPhone(r.phone):''}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a></div>`;
+  }catch(e){ btn.disabled=false; btn.innerHTML=ic('key',18)+' اعمل اللينك'; toast('مقدرش أعمل اللينك: '+(e.message||e),4500); }
 }
 
 /* ================= طلبات المهندس ================= */
@@ -1362,11 +1419,11 @@ async function openCreateRep(name='',u='',role='rep'){
     <div class="fld"><label>الاسم <i>*</i></label><input class="inp" id="crN" value="${esc(name)}"></div>
     <div class="fld"><label>اسم المستخدم (إنجليزي بدون مسافات) <i>*</i></label><input class="inp" id="crU" dir="ltr" autocapitalize="off" value="${esc(u)}"></div>
     <div class="fld"><label>رقم الجوال</label><input class="inp" id="crP" type="tel" dir="ltr" placeholder="اختياري، تقدر تضيفه بعدين"></div>
-    <div class="fld"><label>كلمة المرور</label><input class="inp" id="crPw" dir="ltr" autocapitalize="off" autocomplete="off" value="${genPass()}"><div class="small muted" style="margin-top:6px">تقدر تكتب كلمة مرور من عندك (6 حروف أو أرقام على الأقل). المندوب يقدر يغيّرها بعد ما يدخل.</div></div>`,
+    <div class="small muted" style="margin-top:12px">بعد الإنشاء هيطلعلك لينك دخول تبعته لصاحب الحساب، وهو يعمل كلمة المرور بتاعته بنفسه.</div>`,
     `<button class="btn" data-act="doCreateRep">إنشاء الحساب</button>`);
 }
 async function doCreateRep(btn){
-  const name=$('#crN').value.trim(), u=$('#crU').value.trim().toLowerCase(), phone=$('#crP').value.trim(), pw=$('#crPw').value.trim();
+  const name=$('#crN').value.trim(), u=$('#crU').value.trim().toLowerCase().replace(/\s+/g,'.'), phone=$('#crP').value.trim(), pw=Array.from(crypto.getRandomValues(new Uint8Array(14)),x=>'abcdefghjkmnpqrstuvwxyz23456789'[x%31]).join('');
   const role=['admin','eng'].includes(S.crRole)?S.crRole:'rep', title=(($('#crT')||{}).value||'').trim(), section=role==='admin'?(($('#crS')||{}).value||'all'):role==='eng'?'all':curSec();
   if(!name||!/^[a-z0-9._-]{3,}$/.test(u)){ toast('اكتب الاسم واسم مستخدم إنجليزي (3 حروف على الأقل)'); return; }
   if(pw.length<6){ toast('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
@@ -1374,8 +1431,7 @@ async function doCreateRep(btn){
   try{
     await API.createRep({name,username:u,phone,password:pw,role,title,section});
     S.users=await API.query('users',[],{fresh:true});
-    const link=location.href.split('#')[0].split('?')[0].replace('/visits-beta/','/visits/');
-    const msg=`أهلاً ${name.split(' ')[0]} 👋\nده تطبيق «قسم المشاريع» – عنوان الرخام:\n${link}\n\nاسم المستخدم: ${u}\nكلمة المرور: ${pw}\n\nافتح اللينك من Safari أو Chrome وضيفه للشاشة الرئيسية.`;
+    const msg=inviteMsg(name,u,inviteLink(u,pw));
     $('#shb').innerHTML=`<div class="success"><div class="ck">${ic('check',40,2.2)}</div><h3 style="font-weight:500;margin:0">اتعمل حساب ${esc(name)}</h3></div>
       <div class="card"><div class="small muted">ابعتله الرسالة دي:</div><div style="white-space:pre-wrap;margin-top:8px;font-size:13px" id="shareMsg">${esc(msg)}</div></div>`;
     $('#shf').innerHTML=`<div class="btns"><button class="btn sec2" data-act="copyMsg">${ic('copy',18)} نسخ</button>${phone?`<a class="btn" href="https://wa.me/${normPhone(phone)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a>`:`<a class="btn" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a>`}</div>`;
@@ -1884,6 +1940,9 @@ document.addEventListener('click',async e=>{
     case 'viewAs': S.viewAs=userById(d.id); S.tab='home'; closeSheet(true); render(); window.scrollTo(0,0); break;
     case 'exitView': S.viewAs=null; S.tab='home'; render(); break;
     case 'openSecs': openSecs(); break;
+    case 'setPw': doSetPw(t); break;
+    case 'resetLink': closeSheet(true); openResetLink(d.id); break;
+    case 'doResetLink': doResetLink(t,d.id); break;
     case 'createEngAcc': openCreateRep('','','eng'); break;
     case 'newEngReq': closeSheet(true); openNewEngReq(d.id); break;
     case 'erType': S.er.type=d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b===t)); break;

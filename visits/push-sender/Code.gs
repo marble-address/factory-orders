@@ -147,3 +147,41 @@ function setupAttendance() {
   ScriptApp.newTrigger('attendanceReminders').timeBased().everyMinutes(15).create();
   return 'تمام';
 }
+
+/* ===== لينك دخول جديد (إعادة تعيين كلمة المرور) =====
+   التطبيق بيبعت idToken بتاع المدير + uid الحساب → بنتأكد إنه مدير (ولو مدير قسم: الحساب مندوب في قسمه)
+   → كلمة مرور مؤقتة عشوائية + mustSetPw=true → التطبيق يعمل منها لينك يشتغل مرة واحدة */
+var API_KEY = 'AIzaSyChKkqG2ZVl5K0OUzcJaLRJxcuBL8wKuKY';
+function doPost(e) {
+  var out;
+  try {
+    var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    out = b.action === 'reset' ? resetPw_(b) : { ok: false, err: 'unknown action' };
+  } catch (err) { out = { ok: false, err: String(err.message || err) }; }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+function resetPw_(b) {
+  if (!b.idToken || !b.uid) return { ok: false, err: 'بيانات ناقصة' };
+  var r = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + API_KEY, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ idToken: b.idToken }) });
+  if (r.getResponseCode() !== 200) return { ok: false, err: 'سجّل دخول تاني' };
+  var caller = JSON.parse(r.getContentText()).users[0].localId;
+  var me = getUser_(caller), t = getUser_(b.uid);
+  if (!me || me.role !== 'admin' || me.active === false) return { ok: false, err: 'مش مسموح' };
+  if (!t) return { ok: false, err: 'الحساب مش موجود' };
+  if (me.section && me.section !== 'all' && (t.role !== 'rep' || (t.section || 'rp') !== me.section)) return { ok: false, err: 'الحساب ده مش في قسمك' };
+  var pw = genPw_();
+  var u = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/projects/' + PROJECT + '/accounts:update', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'x-goog-user-project': PROJECT },
+    payload: JSON.stringify({ localId: b.uid, password: pw }) });
+  if (u.getResponseCode() >= 300) return { ok: false, err: 'update ' + u.getResponseCode() + ' ' + u.getContentText().slice(0, 200) };
+  api_('patch', FS + '/users/' + b.uid + '?updateMask.fieldPaths=mustSetPw', { fields: { mustSetPw: { booleanValue: true } } });
+  return { ok: true, username: t.username, password: pw };
+}
+function getUser_(uid) {
+  try { var d = api_('get', FS + '/users/' + uid), f = d.fields || {};
+    return { role: val_(f.role), section: val_(f.section), username: val_(f.username), active: f.active ? f.active.booleanValue : true };
+  } catch (e) { return null; }
+}
+function genPw_() { var c = 'abcdefghjkmnpqrstuvwxyz23456789', s = ''; for (var i = 0; i < 16; i++) s += c.charAt(Math.floor(Math.random() * c.length)); return s; }

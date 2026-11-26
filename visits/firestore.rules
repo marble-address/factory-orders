@@ -25,7 +25,8 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (signedIn() && request.auth.uid == uid
                         && request.resource.data.diff(resource.data).affectedKeys()
-                             .hasOnly(['lastSeen', 'fcmTokens', 'notifOn', 'notifAt']));
+                             .hasOnly(['lastSeen', 'fcmTokens', 'notifOn', 'notifAt', 'mustSetPw'])
+                        && request.resource.data.get('mustSetPw', false) == false);   // يقدر يقفل «لازم يعمل كلمة مرور» بس، مش يفتحها
       allow delete: if false;
     }
 
