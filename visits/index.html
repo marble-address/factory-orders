@@ -317,6 +317,7 @@ const ACT_STATUS = {
   'غير مهتم':['غير مهتم','grey'],
   'رقم غير صحيح':['رقم غير صحيح','red']
 };
+const CLOSED_ST = ['غير مهتم','رقم غير صحيح'];   // حالات تنشيط مقفولة (مفيش متابعة)
 const CONTACT_OUTCOMES = ['لم يرد','تم التواصل','مهتم','زيارة مجدولة','غير مهتم','رقم غير صحيح'];
 const REP_COLORS = ['#065A36','#B59433','#2C6E9B','#8E44AD','#C0392B','#16A085','#D35400','#34495E'];
 
@@ -359,7 +360,6 @@ function normPhone(p){ p=String(p||'').replace(/[^\d+]/g,''); if(p.startsWith('+
 function initials(n){ return (n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join(''); }
 function toast(msg,ms=2600){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),ms); }
 function uid12(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
-function genPass(){ return String(Math.floor(100000+Math.random()*900000)); }
 
 const I = {
   ruler:'<path d="M3 17 17 3l4 4L7 21z"/><path d="m7 13 2 2M10 10l2 2M13 7l2 2"/>',
@@ -374,7 +374,6 @@ const I = {
   chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   phone:'<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A17 17 0 0 1 3 5a2 2 0 0 1 2-2"/>',
   wa:'<path d="M3.5 20.5 5 16a8.5 8.5 0 1 1 3.3 3.2z"/><path d="M9 9.5c.3 1.8 2.1 4 4.5 4.8l1.3-1.2 2 1-.5 1.5c-3.8.4-8-3.5-8.1-7.6l1.5-.5 1 2z"/>',
-  pin:'<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
   cam:'<path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="4"/>',
   out:'<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 8l-4 4 4 4M6 12h10"/>',
   check:'<path d="M5 12.5 10 17 19 7"/>',
@@ -387,7 +386,6 @@ const I = {
   route:'<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5"/>',
   cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   key:'<circle cx="8" cy="15" r="4"/><path d="M11 12 20 3M17 6l3 3M15 8l2 2"/>',
-  refresh:'<path d="M20 11A8 8 0 0 0 5.6 6.6L4 8M4 4v4h4M4 13a8 8 0 0 0 14.4 4.4L20 16M20 20v-4h-4"/>',
   building:'<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M2 21h20M8 8h3M8 12h3M8 16h3"/>',
   copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
   flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
@@ -425,7 +423,7 @@ const API = {};
 const TS_FIELDS = ['createdAt','updatedAt'];
 
 function liveAPI(){
-  const app = firebase.initializeApp(FIREBASE_CONFIG);
+  firebase.initializeApp(FIREBASE_CONFIG);
   const auth = firebase.auth(), fs = firebase.firestore();
   // الآيفون (التطبيق المضاف للشاشة الرئيسية) ساعات بيعلّق اتصال Firestore المفتوح؛ الـ long polling أثبت وأسرع في أول تحميل
   try{ fs.settings({experimentalForceLongPolling:true, merge:true}); }catch(e){}
@@ -537,7 +535,7 @@ function seedDemo(){
       let t=startOfDay(Date.now()-d*DAY)+ (9+ri*.3)*36e5;
       for(let k=0;k<cnt;k++){
         if(d===0 && t>Date.now()) break;
-        const ci=custIds[(ri+k*4+d)%custIds.length]; const c=db.customers[ci]; if(c.ownerUid!==rep) { c.ownerUid=c.ownerUid; }
+        const ci=custIds[(ri+k*4+d)%custIds.length]; const c=db.customers[ci];
         const far = (d===1&&ri===2&&k===1) || (d===0&&ri===1&&k===1);
         const lat=c.lat+(far?.011:(Math.random()-.5)*.0012), lng=c.lng+(far?.006:(Math.random()-.5)*.0012);
         const dm=dist(lat,lng,c.lat,c.lng);
@@ -578,6 +576,8 @@ const byAdminTag = () => S.viewAs ? S.me.name : '';
 /* ================= التشغيل ================= */
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
 function loadCss(href){ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); }
+async function loadLeaflet(){ if(!window.L){ loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'); await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'); } }
+async function loadXLSX(){ if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); }
 
 async function boot(){
   newBuild().then(b=>{ if(b){ try{ if(sessionStorage.getItem('mv_bld')===b) return; sessionStorage.setItem('mv_bld',b); }catch(e){} location.reload(); } });
@@ -695,14 +695,13 @@ function visitItem(v,showRep){
       <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">${v.result?`<span class="badge ${rb?rb[1]:''}">${esc(v.result)}</span>`:''}${v.flagged?`<span class="badge red">${ic('flag',12,2)} ملاحظة</span>`:''}${v.type==='site'?'<span class="badge grey">موقع مشروع</span>':''}</div>
     </div></button>`;
 }
-function custItem(c,mode){
-  const st=ACT_STATUS[c.actStatus];
+function custItem(c){
   const due=c.nextVisitAt&&c.nextVisitAt<=today();
   return `<button class="it" data-act="openCust" data-id="${c.id}">
     <div class="avt" style="background:${c.source==='old'?'var(--gold)':'var(--g)'};width:40px;height:40px">${ic(c.type==='site'?'building':'user',19)}</div>
     <div class="grow"><b class="ell">${esc(c.name)}</b>
       <div class="meta ell">${c.code?esc(c.code)+' · ':''}${c.phone?`<span dir="ltr">${esc(c.phone)}</span>`:'بدون رقم'}${c.lastVisitAt?' · آخر زيارة '+fDate(c.lastVisitAt):''}</div>
-      <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">${unreadBadge(c)}${mode==='act'&&st?`<span class="badge ${st[1]}">${st[0]}</span>`:''}${c.lastResult&&mode!=='act'?`<span class="badge ${(RESULTS.find(r=>r[0]===c.lastResult)||[])[1]||''}">${esc(c.lastResult)}</span>`:''}${c.nextVisitAt?`<span class="badge ${due?'red':'blue'}">${ic('cal',12,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}</div>
+      <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">${unreadBadge(c)}${c.lastResult?`<span class="badge ${(RESULTS.find(r=>r[0]===c.lastResult)||[])[1]||''}">${esc(c.lastResult)}</span>`:''}${c.nextVisitAt?`<span class="badge ${due?'red':'blue'}">${ic('cal',12,2)} ${dueLabel(c.nextVisitAt)}</span>`:''}</div>
     </div></button>`;
 }
 
@@ -714,7 +713,7 @@ async function repHome(m){
   S._cust=cs; S._vis=vs; S._tasks=ts; const openT=ts.filter(t=>t.status==='open');
   const s0=startOfDay(), wk=periodRange('week')[0];
   const vToday=vs.filter(v=>v.createdAt>=s0).length, vWeek=vs.filter(v=>v.createdAt>=wk).length;
-  const due=cs.filter(c=>c.nextVisitAt&&c.nextVisitAt<=today()&&!['غير مهتم','رقم غير صحيح'].includes(c.actStatus)).sort((a,b)=>a.nextVisitAt<b.nextVisitAt?-1:1);
+  const due=cs.filter(c=>c.nextVisitAt&&c.nextVisitAt<=today()&&!CLOSED_ST.includes(c.actStatus)).sort((a,b)=>a.nextVisitAt<b.nextVisitAt?-1:1);
   const oldNew=cs.filter(c=>c.source==='old'&&c.actStatus==='جديد').length;
   const h=new Date().getHours();
   m.innerHTML=`
@@ -726,7 +725,7 @@ async function repHome(m){
     <div class="st gold"><b>${vWeek}</b><span>زيارات الأسبوع</span></div>
     <div class="st ${due.length?'warn':''}"><b>${due.length}</b><span>متابعات مستحقة</span></div>
   </div>
-  ${`<button class="cta" data-act="newVisit"><div class="ic">${ic('pin',26)}</div><div class="grow"><b>سجّل زيارة جديدة</b><small>صورة + موقعك بيتسجل تلقائي</small></div>${ic('plus',22)}</button>`}
+  <button class="cta" data-act="newVisit"><div class="ic">${ic('pin',26)}</div><div class="grow"><b>سجّل زيارة جديدة</b><small>صورة + موقعك بيتسجل تلقائي</small></div>${ic('plus',22)}</button>
   ${openT.length?`<div class="sec"><h3>مهام من المدير</h3><span class="cnt">${openT.length}</span></div>${openT.map(t=>taskItem(t,{canDo:true})).join('')}`:''}
   <div class="sec"><h3>متابعات مستحقة</h3>${due.length?`<span class="cnt">${due.length}</span>`:''}</div>
   ${due.length? due.slice(0,8).map(c=>custItem(c)).join('') : `<div class="card empty" style="padding:18px">${ic('check',28)}مفيش متابعات متأخرة. شغل نضيف</div>`}
@@ -754,7 +753,7 @@ async function repCustomers(m){
   const q=(S.q||'').trim();
   const f=S.filt.rc||'all';
   let list=cs.filter(c=>f==='all'||(f==='field'&&c.source!=='old')||(f==='old'&&c.source==='old')||(f==='due'&&c.nextVisitAt&&c.nextVisitAt<=today()));
-  if(q) list=list.filter(c=>(c.name+' '+(c.phone||'')+' '+(c.code||'')).includes(q));
+  if(q) list=list.filter(c=>custMatch(c,q));
   list.sort((a,b)=>(b.lastVisitAt||b.createdAt||0)-(a.lastVisitAt||a.createdAt||0));
   m.innerHTML=`<div class="srch"><span>${ic('search',18)}</span><input class="inp" id="q" placeholder="ابحث باسم العميل أو الجوال" value="${esc(q)}"></div>
   <div class="chips" style="margin-top:10px">${[['all','الكل'],['field','عملاء الزيارات'],['old','الداتا القديمة'],['due','متابعة مستحقة']].map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="setF" data-k="rc" data-v="${k}">${l}</button>`).join('')}</div>
@@ -770,6 +769,7 @@ const PRIO_RANK={'عالية':0,'متوسطة':1,'عادية':2};
 function prioOf(c){ const m=/أولوية (عالية|متوسطة|عادية)/.exec(c.notes||''); return m?m[1]:''; }
 function prioRank(c){ const p=prioOf(c); return p in PRIO_RANK?PRIO_RANK[p]:3; }
 function pastTotal(c){ const m=/· ([\d,]+) ر\.س/.exec(c.notes||''); return m?+m[1].replace(/,/g,''):0; }
+function custMatch(c,q){ return (c.name+' '+(c.phone||'')+' '+(c.code||'')).includes(q); }
 function actBody(m,cs,admin){
   const f=S.actFilter, q=(S.q||'').trim();
   const contacted=cs.filter(c=>c.actStatus&&c.actStatus!=='جديد').length;
@@ -777,16 +777,17 @@ function actBody(m,cs,admin){
   const interested=cs.filter(c=>c.actStatus==='مهتم').length;
   const pct=cs.length?Math.round(contacted*100/cs.length):0;
   const groups=[['all','الكل'],['high','أولوية عالية'],['جديد','لم يتم التواصل'],['followup','متابعة'],['زيارة مجدولة','زيارة مجدولة'],['done','تم'],['closed','مغلق']];
-  const inG=(c,g)=> g==='all'||(g==='high'&&prioOf(c)==='عالية')||(g==='followup'&&['لم يرد','تم التواصل','مهتم'].includes(c.actStatus))||(g==='done'&&c.actStatus==='تمت الزيارة')||(g==='closed'&&['غير مهتم','رقم غير صحيح'].includes(c.actStatus))||c.actStatus===g;
-  let list=cs.filter(c=>inG(c,f)&&(!admin||S.actRep==='all'||c.ownerUid===S.actRep));
-  if(q) list=list.filter(c=>(c.name+' '+(c.phone||'')+' '+(c.code||'')).includes(q));
+  const inG=(c,g)=> g==='all'||(g==='high'&&prioOf(c)==='عالية')||(g==='followup'&&['لم يرد','تم التواصل','مهتم'].includes(c.actStatus))||(g==='done'&&c.actStatus==='تمت الزيارة')||(g==='closed'&&CLOSED_ST.includes(c.actStatus))||c.actStatus===g;
+  const byRep=c=>!admin||S.actRep==='all'||c.ownerUid===S.actRep;
+  let list=cs.filter(c=>inG(c,f)&&byRep(c));
+  if(q) list=list.filter(c=>custMatch(c,q));
   const td=today(); const dueK=c=>c.nextVisitAt&&c.nextVisitAt<=td?0:1;
   list.sort((a,b)=> dueK(a)-dueK(b) || prioRank(a)-prioRank(b) || pastTotal(b)-pastTotal(a) || (a.nextVisitAt||'9').localeCompare(b.nextVisitAt||'9') || a.name.localeCompare(b.name,'ar'));
   const C=2*Math.PI*22;
   m.innerHTML=`${admin?'':`<div class="card prog"><svg class="ring" viewBox="0 0 56 56"><circle cx="28" cy="28" r="22" fill="none" stroke="#EFEBE1" stroke-width="6"/><circle cx="28" cy="28" r="22" fill="none" stroke="var(--gold)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${C*pct/100} ${C}" transform="rotate(-90 28 28)"/><text x="28" y="32" text-anchor="middle" font-size="12" fill="var(--ink)" font-family="Arial">${pct}%</text></svg>
     <div class="grow"><b style="font-weight:500">تنشيط الداتا القديمة</b><div class="small muted">اتواصلت مع ${contacted} من ${cs.length} · زرت ${visited} · مهتم ${interested}</div></div></div>`}
   <div class="srch" style="margin-top:12px"><span>${ic('search',18)}</span><input class="inp" id="q" placeholder="ابحث بالاسم أو الكود أو الجوال" value="${esc(q)}"></div>
-  <div class="chips" style="margin-top:10px">${groups.map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="actF" data-v="${k}">${l} <span style="opacity:.6">${cs.filter(c=>inG(c,k)&&(!admin||S.actRep==='all'||c.ownerUid===S.actRep)).length}</span></button>`).join('')}</div>
+  <div class="chips" style="margin-top:10px">${groups.map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="actF" data-v="${k}">${l} <span style="opacity:.6">${cs.filter(c=>inG(c,k)&&byRep(c)).length}</span></button>`).join('')}</div>
   <div style="margin-top:8px">${list.length? list.slice(0,400).map(c=>actItem(c,admin)).join('') : `<div class="card empty">${ic('bolt',30)}${cs.length?'مفيش عملاء في القائمة دي':'لسه مفيش داتا قديمة متوزعة عليك. المدير هيرفعها من لوحته'}</div>`}</div>`;
 }
 function actItem(c,admin){
@@ -815,7 +816,7 @@ async function adminHome(m){
   const quotes=vs.filter(v=>v.result==='طلب عرض سعر').length, sold=vs.filter(v=>v.result==='تم البيع').length;
   const rs=reps(); const maxV=Math.max(1,...rs.map(r=>vs.filter(v=>v.repUid===r.id).length));
   const byRes=RESULTS.map(([r])=>[r,vs.filter(v=>v.result===r).length]).filter(x=>x[1]);
-  const dueAll=custs.filter(c=>c.nextVisitAt&&c.nextVisitAt<today()&&!['غير مهتم','رقم غير صحيح'].includes(c.actStatus)).length;
+  const dueAll=custs.filter(c=>c.nextVisitAt&&c.nextVisitAt<today()&&!CLOSED_ST.includes(c.actStatus)).length;
   m.innerHTML=`
   <div class="hello"><h2>أهلاً يا ${esc(S.me.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
   <div class="chips">${PERIODS.map(([k,l])=>`<button class="chip ${p===k?'on':''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
@@ -891,9 +892,7 @@ function routeTimeline(vs){
 async function drawMap(vs,rep){
   const el=$('#map'); if(!el) return;
   if(API.mode==='demo'){ svgMap(el,vs,rep); return; }
-  try{
-    if(!window.L){ loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'); await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'); }
-  }catch(e){ el.innerHTML='<div class="empty">الخريطة محتاجة إنترنت</div>'; return; }
+  try{ await loadLeaflet(); }catch(e){ el.innerHTML='<div class="empty">الخريطة محتاجة إنترنت</div>'; return; }
   if(S._map){ S._map.remove(); S._map=null; }
   const map=L.map(el,{zoomControl:false,attributionControl:true}).setView([24.7136,46.6753],11); S._map=map;
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
@@ -1138,7 +1137,7 @@ async function engMap(m){
   const list=(await engList()).filter(r=>r.status!=='تم'&&r.lat);
   m.innerHTML=`<div id="map"></div><div class="small muted" style="margin:8px 4px">أماكن الطلبات المفتوحة · دوس على العلامة للتفاصيل</div>${list.map(r=>engItem(r,{showRep:true})).join('')}`;
   const el=$('#map');
-  try{ if(!window.L){ loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'); await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'); } }catch(e){ el.innerHTML='<div class="empty">الخريطة محتاجة إنترنت</div>'; return; }
+  try{ await loadLeaflet(); }catch(e){ el.innerHTML='<div class="empty">الخريطة محتاجة إنترنت</div>'; return; }
   if(S._map){ S._map.remove(); S._map=null; }
   const map=L.map(el,{zoomControl:false}).setView([24.7136,46.6753],11); S._map=map;
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
@@ -1195,7 +1194,7 @@ function sheet(title,body,foot,opts={}){
   requestAnimationFrame(()=>ov.classList.add('show'));
   return ov;
 }
-function closeSheet(now){ const ov=$('#ov'); if(!ov) return; document.body.style.overflow=''; if(S._watch){ S._watch=null; } if(now){ ov.remove(); return; } ov.classList.remove('show'); setTimeout(()=>ov.remove(),200); }
+function closeSheet(now){ const ov=$('#ov'); if(!ov) return; document.body.style.overflow=''; if(now){ ov.remove(); return; } ov.classList.remove('show'); setTimeout(()=>ov.remove(),200); }
 
 /* ---- تسجيل زيارة ---- */
 async function openNewVisit(prefillId){
@@ -1279,7 +1278,7 @@ function renderCustBox(){
     box.innerHTML=`<div class="selc">${ic('building',20)}<div class="grow"><b style="font-weight:500">${esc(c.name)}</b><div class="small muted">${c.phone?`<span dir="ltr">${esc(c.phone)}</span> · `:''}${c.lat?'موقعه مسجّل':'أول زيارة، موقعه هيتسجل دلوقتي'}</div></div><button class="small" style="color:var(--g)" data-act="nvClear">تغيير</button></div>`;
   } else {
     box.innerHTML=`<div class="srch"><span>${ic('search',18)}</span><input class="inp" id="nvSearch" placeholder="ابحث في عملائك بالاسم أو الجوال"></div><div class="pick" id="nvPick"></div>`;
-    const draw=q=>{ const l=S._custMine.filter(c=>!q||(c.name+' '+(c.phone||'')+' '+(c.code||'')).includes(q)).sort((a,b)=>(b.lastVisitAt||0)-(a.lastVisitAt||0)).slice(0,40);
+    const draw=q=>{ const l=S._custMine.filter(c=>!q||custMatch(c,q)).sort((a,b)=>(b.lastVisitAt||0)-(a.lastVisitAt||0)).slice(0,40);
       $('#nvPick').innerHTML= l.length? l.map(c=>`<button data-act="nvPickC" data-id="${c.id}"><b style="font-weight:500">${esc(c.name)}</b> <span class="small muted">${c.code?esc(c.code)+' · ':''}${esc(c.phone||'')}</span></button>`).join('') : '<div class="empty" style="padding:14px">مفيش نتايج. سجّله كعميل جديد</div>'; };
     draw(''); $('#nvSearch').addEventListener('input',e=>draw(e.target.value.trim()));
   }
@@ -1325,8 +1324,7 @@ async function saveVisit(){
     const patch={lastVisitAt:Date.now(),lastResult:V.result,nextVisitAt:V.next||'',visitsCount:(cust.visitsCount||0)+1,type:V.type};
     if(!cust.lat){ patch.lat=V.loc.lat; patch.lng=V.loc.lng; }
     if(cust.source==='old') patch.actStatus= V.result==='غير مهتم'?'غير مهتم': V.result==='مهتم'||V.result==='طلب عرض سعر'||V.result==='تم البيع'?'مهتم':'تمت الزيارة';
-    if(V.mode!=='new') { API.update('customers',cust.id,patch); Object.assign(cust,patch); }
-    else { API.update('customers',cust.id,patch); Object.assign(cust,patch); }
+    API.update('customers',cust.id,patch); Object.assign(cust,patch);
     $('#shb').innerHTML=`<div class="success"><div class="ck">${ic('check',40,2.2).replace('currentColor','#065A36')}</div><h3 style="font-weight:500;margin:0">اتسجلت الزيارة</h3><p class="muted">${esc(cust.name)} · ${fTime(Date.now())}</p>
       ${r1.saved?'':'<div class="warnbox">'+ic('warn',18)+'<div>النت ضعيف. الزيارة محفوظة على الموبايل وهتترفع لوحدها أول ما النت يرجع. ماتمسحش التطبيق.</div></div>'}
       ${flags.length?`<div class="warnbox red">${ic('flag',18)}<div>${flags.map(esc).join('<br>')}</div></div>`:''}</div>`;
@@ -1362,8 +1360,8 @@ async function openVisit(id){
 /* ---- ملف عميل ---- */
 async function openCust(id){
   let c=custCache(id) || await API.get('customers',id);
-  if(!c) return; S._openC=c;
-  const [cms,ctasks,ereqs]=await Promise.all([loadComments(c), API.query('tasks',[['customerId','==',id]].concat(isMeAdmin()?[]:[['repUid','==',S.me.id]])).catch(()=>[]), API.query('engreq',[['customerId','==',id]].concat(isMeAdmin()?[]:[['repUid','==',S.me.id]])).then(l=>l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))).catch(()=>[])]);
+  if(!c) return;
+  const [cms,ctasks,ereqs]=await Promise.all([loadComments(c), API.query('tasks',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]])).catch(()=>[]), API.query('engreq',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]])).then(l=>l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))).catch(()=>[])]);
   S._tasks=(S._tasks||[]).filter(t=>t.customerId!==id).concat(ctasks);
   markSeen(c);
   const vs=(await API.query('visits',[['customerId','==',id]].concat(isAdmin()?[]:[['repUid','==',S.me.id]]))).sort((a,b)=>b.createdAt-a.createdAt);
@@ -1387,10 +1385,10 @@ async function openCust(id){
     ${isAdmin()&&!S.viewAs&&c.ownerUid?`<div class="btns" style="margin-top:10px"><button class="btn sm gold" data-act="newTask" data-id="${c.id}">${ic('pinpaper',16)} مهمة للمندوب</button></div>`:''}
     ${(mine||isAdmin())&&c.ownerUid?`<div class="btns" style="margin-top:10px"><button class="btn sm sec2" data-act="newEngReq" data-id="${c.id}">${ic('ruler',16)} طلب زيارة مهندس</button></div>`:''}
     ${ereqs.length?`<div class="sec"><h3>طلبات المهندس</h3><span class="cnt">${ereqs.length}</span></div>${ereqs.map(r=>engItem(r,{})).join('')}`:''}
-    ${ctasks.length?`<div class="sec"><h3>المهام</h3><span class="cnt">${ctasks.length}</span></div>${ctasks.sort(taskSort).map(t=>taskItem(t,{showRep:isMeAdmin()&&!S.viewAs,canDo:!(isMeAdmin()&&!S.viewAs)})).join('')}`:''}
+    ${ctasks.length?`<div class="sec"><h3>المهام</h3><span class="cnt">${ctasks.length}</span></div>${ctasks.sort(taskSort).map(t=>taskItem(t,{showRep:isAdmin()&&!S.viewAs,canDo:!(isAdmin()&&!S.viewAs)})).join('')}`:''}
     <div class="sec"><h3>التعليقات</h3>${cms.length?`<span class="cnt">${cms.length}</span>`:''}</div>
     <div id="cmList">${commentsHtml(cms)}</div>
-    <div class="cmbox"><textarea class="inp" id="cmIn" placeholder="${isMeAdmin()?'اكتب توجيه أو سؤال للمندوب…':'اكتب رد أو تحديث للمدير…'}"></textarea><button class="btn sm" id="cmBtn" data-act="sendComment" data-id="${c.id}" style="width:auto;padding:0 14px;height:44px">إرسال</button></div>
+    <div class="cmbox"><textarea class="inp" id="cmIn" placeholder="${isAdmin()?'اكتب توجيه أو سؤال للمندوب…':'اكتب رد أو تحديث للمدير…'}"></textarea><button class="btn sm" id="cmBtn" data-act="sendComment" data-id="${c.id}" style="width:auto;padding:0 14px;height:44px">إرسال</button></div>
     ${isAdmin()&&!S.viewAs?`<div class="fld"><label>إدارة العميل</label><select class="inp" data-chg="moveCust" data-id="${c.id}">${reps().map(r=>`<option value="${r.id}" ${c.ownerUid===r.id?'selected':''}>${c.ownerUid===r.id?'عند: ':'نقل إلى: '}${esc(r.name)}</option>`).join('')}</select>
       <button class="btn red" style="margin-top:10px" data-act="delCust" data-id="${c.id}">${ic('trash',18)} حذف العميل</button></div>`:''}
     <div class="sec"><h3>الزيارات</h3><span class="cnt">${vs.length}</span></div>
@@ -1409,14 +1407,19 @@ function openContact(id){
     `<button class="btn" data-act="saveContact">${ic('check',20)} حفظ</button>`);
   $('#ctNextD').addEventListener('change',e=>{ S.ct.next=e.target.value; document.querySelectorAll('#ctNextC .chip').forEach(b=>b.classList.toggle('on',b.dataset.v===S.ct.next)); });
 }
-async function saveContact(){
+async function saveContact(btn){
   const T=S.ct; if(!T.outcome){ toast('اختار النتيجة'); return; }
-  const note=($('#ctNote').value||'').trim();
-  const c=(S._cust||[]).find(x=>x.id===T.id);
-  await API.add('contacts',{customerId:T.id,customerName:c.name,repUid:actor().id,repName:actor().name,byAdmin:byAdminTag(),outcome:T.outcome,note,next:T.next||'',createdAt:'__SV__'});
-  const patch={actStatus:T.outcome,lastContactAt:Date.now(),contactNote:note,nextVisitAt:T.next||(['غير مهتم','رقم غير صحيح'].includes(T.outcome)?'':c.nextVisitAt||'')};
-  await API.update('customers',T.id,patch); Object.assign(c,patch);
-  closeSheet(); toast('اتسجلت النتيجة'); renderTab();
+  if(T._busy) return; T._busy=true;
+  const old=btn?btn.innerHTML:''; if(btn) btn.disabled=true;
+  try{
+    const note=($('#ctNote').value||'').trim();
+    const c=(S._cust||[]).find(x=>x.id===T.id);
+    if(!T._saved){ await API.add('contacts',{customerId:T.id,customerName:c.name,repUid:actor().id,repName:actor().name,byAdmin:byAdminTag(),outcome:T.outcome,note,next:T.next||'',createdAt:'__SV__'}); T._saved=true; }
+    const patch={actStatus:T.outcome,lastContactAt:Date.now(),contactNote:note,nextVisitAt:T.next||(CLOSED_ST.includes(T.outcome)?'':c.nextVisitAt||'')};
+    await API.update('customers',T.id,patch); Object.assign(c,patch);
+    closeSheet(); toast('اتسجلت النتيجة'); renderTab();
+  }catch(e){ console.warn('contact',e); toast('ما اتحفظتش، اتأكد من النت وجرب تاني',4500); if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  finally{ T._busy=false; }
 }
 
 /* ---- حساب المندوب ---- */
@@ -1438,7 +1441,6 @@ async function doCreateRep(btn){
   const name=$('#crN').value.trim(), u=$('#crU').value.trim().toLowerCase().replace(/\s+/g,'.'), phone=$('#crP').value.trim(), pw=Array.from(crypto.getRandomValues(new Uint8Array(14)),x=>'abcdefghjkmnpqrstuvwxyz23456789'[x%31]).join('');
   const role=['admin','eng'].includes(S.crRole)?S.crRole:'rep', title=(($('#crT')||{}).value||'').trim(), section=role==='admin'?(($('#crS')||{}).value||'all'):role==='eng'?'all':curSec();
   if(!name||!/^[a-z0-9._-]{3,}$/.test(u)){ toast('اكتب الاسم واسم مستخدم إنجليزي (3 حروف على الأقل)'); return; }
-  if(pw.length<6){ toast('كلمة المرور لازم تكون 6 حروف أو أرقام على الأقل'); return; }
   btn.disabled=true; btn.innerHTML='<span class="spin" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>';
   try{
     await API.createRep({name,username:u,phone,password:pw,role,title,section});
@@ -1446,7 +1448,7 @@ async function doCreateRep(btn){
     const msg=inviteMsg(name,u,inviteLink(u,pw));
     $('#shb').innerHTML=`<div class="success"><div class="ck">${ic('check',40,2.2)}</div><h3 style="font-weight:500;margin:0">اتعمل حساب ${esc(name)}</h3></div>
       <div class="card"><div class="small muted">ابعتله الرسالة دي:</div><div style="white-space:pre-wrap;margin-top:8px;font-size:13px" id="shareMsg">${esc(msg)}</div></div>`;
-    $('#shf').innerHTML=`<div class="btns"><button class="btn sec2" data-act="copyMsg">${ic('copy',18)} نسخ</button>${phone?`<a class="btn" href="https://wa.me/${normPhone(phone)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a>`:`<a class="btn" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a>`}</div>`;
+    $('#shf').innerHTML=`<div class="btns"><button class="btn sec2" data-act="copyMsg">${ic('copy',18)} نسخ</button><a class="btn" href="https://wa.me/${phone?normPhone(phone):''}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">${ic('wa',18)} واتساب</a></div>`;
     renderTab();
   }catch(e){ btn.disabled=false; btn.textContent='إنشاء الحساب'; toast(e.code==='auth/email-already-in-use'?'اسم المستخدم ده موجود قبل كده':'حصلت مشكلة: '+(e.message||e),4000); }
 }
@@ -1483,12 +1485,12 @@ async function openImport(){
     const f=e.target.files[0]; if(!f) return;
     $('#impMap').innerHTML='<div class="loading"><span class="spin"></span></div>';
     try{
-      if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+      await loadXLSX();
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).filter(r=>r.some(x=>String(x).trim()));
       if(rows.length<2) throw new Error('الملف فاضي');
       const hdr=rows[0].map(String); S.imp={hdr,rows:rows.slice(1)};
-      const guess=(keys)=>{ const i=hdr.findIndex(h=>keys.some(k=>h.toLowerCase().includes(k))); return i; };
+      const guess=keys=>hdr.findIndex(h=>keys.some(k=>h.toLowerCase().includes(k)));
       const fields=[['name','اسم العميل',['اسم','عميل','name','customer','partner']],['phone','الجوال',['جوال','هاتف','تليفون','موبايل','phone','mobile']],['code','الكود',['كود','رقم العميل','code','ref']],['area','المدينة / الحي',['مدينة','حي','منطقة','city','area']],['notes','ملاحظات',['ملاحظ','note']],['rep','المندوب (لو في عمود)',['مندوب','sales','بائع','rep']]];
       S.imp.fields=fields;
       const opt=(sel)=>`<option value="-1">— مش موجود —</option>`+hdr.map((h,i)=>`<option value="${i}" ${i===sel?'selected':''}>${esc(h)||'عمود '+(i+1)}</option>`).join('');
@@ -1522,7 +1524,7 @@ async function doImport(btn){
 /* ---- تصدير ---- */
 async function exportVisits(){
   const vs=S._list||[]; if(!vs.length){ toast('مفيش زيارات للتصدير'); return; }
-  try{ if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); }catch(e){ toast('محتاج إنترنت'); return; }
+  try{ await loadXLSX(); }catch(e){ toast('محتاج إنترنت'); return; }
   const rows=vs.map(v=>({'التاريخ':ymd(v.createdAt),'الوقت':fTime(v.createdAt),'المندوب':v.repName,'العميل / المشروع':v.customerName,'الجوال':v.phone,'التصنيف':v.category,'نوع الزيارة':v.type==='site'?'موقع مشروع':'مقر عميل','الخامة':(v.materials||[]).join('، '),'المساحة م²':v.area||'','النتيجة':v.result,'الزيارة الجاية':v.nextVisitDate||'','ملاحظات':v.notes||'','البعد عن العميل (م)':v.distanceM==null?'':v.distanceM,'ملاحظة النظام':(v.flags||[]).join('، '),'رابط الموقع':`https://www.google.com/maps?q=${v.lat},${v.lng}`}));
   const ws=XLSX.utils.json_to_sheet(rows); ws['!cols']=Object.keys(rows[0]).map(k=>({wch:Math.max(10,k.length+4)})); ws['!views']=[{RTL:true}];
   const wb=XLSX.utils.book_new(); wb.Workbook={Views:[{RTL:true}]}; XLSX.utils.book_append_sheet(wb,ws,'الزيارات');
@@ -1530,7 +1532,7 @@ async function exportVisits(){
 }
 async function exportAct(){
   const cs=S._cust||[]; if(!cs.length){ toast('مفيش داتا'); return; }
-  try{ if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); }catch(e){ toast('محتاج إنترنت'); return; }
+  try{ await loadXLSX(); }catch(e){ toast('محتاج إنترنت'); return; }
   const rows=cs.map(c=>({'الكود':c.code||'','العميل':c.name,'الجوال':c.phone||'','المندوب':(userById(c.ownerUid)||{}).name||'','الحالة':(ACT_STATUS[c.actStatus]||['لم يتم التواصل'])[0],'آخر تواصل':c.lastContactAt?ymd(c.lastContactAt):'','المتابعة الجاية':c.nextVisitAt||'','عدد الزيارات':c.visitsCount||0,'ملاحظة':c.contactNote||''}));
   const ws=XLSX.utils.json_to_sheet(rows); ws['!views']=[{RTL:true}]; const wb=XLSX.utils.book_new(); wb.Workbook={Views:[{RTL:true}]}; XLSX.utils.book_append_sheet(wb,ws,'تنشيط الداتا');
   XLSX.writeFile(wb,'تنشيط-الداتا-'+today()+'.xlsx');
@@ -1543,10 +1545,9 @@ const VAPID_KEY = 'BCX34NOLVHbVoJ6ysPIiIhfBMotATsx42A96GGMY-ldgYKJw3p4O4ruVb5_zX
 const ADMINS = 'ADMINS';    // مستلم الإشعار = كل المديرين
 const ONLINE_MS = 3*60*1000;
 
-const isMeAdmin = () => S.me && S.me.role==='admin';
 function unreadComment(c){
   if(!c || !c.lastCommentAt) return false;
-  if(isMeAdmin()) return c.lastCommentBy!==S.me.id && c.lastCommentAt>(c.seenAdmin||0);
+  if(isAdmin()) return c.lastCommentBy!==S.me.id && c.lastCommentAt>(c.seenAdmin||0);
   return c.lastCommentBy!==S.me.id && c.lastCommentAt>(c.seenRep||0);
 }
 const unreadBadge = c => unreadComment(c) ? `<span class="badge gold">${ic('chat',12,2)} تعليق جديد</span>` : '';
@@ -1562,7 +1563,7 @@ function pingPush(){ if(PUSH_PING_URL && API.mode!=='demo'){ try{ fetch(PUSH_PIN
 
 /* ---------- التعليقات ---------- */
 async function loadComments(c){
-  let list=[]; try{ list=await API.query('comments',[['customerId','==',c.id]].concat(isMeAdmin()?[]:[['ownerUid','==',S.me.id]])); }catch(e){ console.warn(e); }
+  let list=[]; try{ list=await API.query('comments',[['customerId','==',c.id]].concat(isAdmin()?[]:[['ownerUid','==',S.me.id]])); }catch(e){ console.warn(e); }
   return list.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
 }
 function commentsHtml(list){
@@ -1577,9 +1578,9 @@ async function sendComment(cid){
   inp.value=''; const btn=$('#cmBtn'); if(btn) btn.disabled=true;
   try{
     await API.add('comments',{customerId:c.id,customerName:c.name,ownerUid:c.ownerUid,authorUid:S.me.id,authorName:S.me.name,authorRole:S.me.role,authorTitle:S.me.title||'',text,createdAt:'__SV__'});
-    const patch=isMeAdmin()?{lastCommentAt:now,lastCommentBy:S.me.id,seenAdmin:now}:{lastCommentAt:now,lastCommentBy:S.me.id,seenRep:now};
+    const patch=isAdmin()?{lastCommentAt:now,lastCommentBy:S.me.id,seenAdmin:now}:{lastCommentAt:now,lastCommentBy:S.me.id,seenRep:now};
     await API.update('customers',c.id,patch); Object.assign(c,patch);
-    if(isMeAdmin()) notify(c.ownerUid,'💬 تعليق من '+S.me.name.split(' ')[0]+' · '+c.name,text,{kind:'comment',customerId:c.id});
+    if(isAdmin()) notify(c.ownerUid,'💬 تعليق من '+S.me.name.split(' ')[0]+' · '+c.name,text,{kind:'comment',customerId:c.id});
     else notify(ADMINS,'💬 '+S.me.name+' · '+c.name,text,{kind:'comment',customerId:c.id});
     const box=$('#cmList'); if(box) box.innerHTML=commentsHtml(await loadComments(c));
     toast('اتبعت التعليق');
@@ -1589,7 +1590,7 @@ async function sendComment(cid){
 function custCache(id){ return (S._cust||[]).concat(S._allCust||[],S._custMine||[]).find(x=>x.id===id); }
 async function markSeen(c){
   if(!unreadComment(c)) return;
-  const now=Date.now(); const patch=isMeAdmin()?{seenAdmin:now}:{seenRep:now};
+  const now=Date.now(); const patch=isAdmin()?{seenAdmin:now}:{seenRep:now};
   try{ await API.update('customers',c.id,patch); Object.assign(c,patch); }catch(e){}
 }
 
@@ -1661,7 +1662,7 @@ async function openTasksAdmin(){
 
 /* ---------- الجرس (الإشعارات) ---------- */
 async function myNotifs(){
-  const to=isMeAdmin()?[S.me.id,ADMINS]:[S.me.id];
+  const to=isAdmin()?[S.me.id,ADMINS]:[S.me.id];
   const l=await API.query('notifs',[['toUid','in',to]],{fresh:true});
   return l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 }
@@ -1683,7 +1684,7 @@ async function openBell(){
 async function openNotif(id){
   const x=(S._notifs||[]).find(n=>n.id===id); if(!x) return;
   closeSheet(true);
-  if(x.kind==='taskDone' && isMeAdmin()){ S.taskF='done'; openTasksAdmin(); return; }
+  if(x.kind==='taskDone' && isAdmin()){ S.taskF='done'; openTasksAdmin(); return; }
   if(x.customerId) openCust(x.customerId);
 }
 
@@ -1736,7 +1737,7 @@ async function silentPushRefresh(){
 /* ---------- المتصلين ---------- */
 let _hb=null;
 function startHeartbeat(){
-  const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()}).catch(()=>{}); refreshBell(); if(isMeAdmin()) refreshOnline(); };
+  const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()}).catch(()=>{}); refreshBell(); if(isAdmin()) refreshOnline(); };
   clearInterval(_hb); beat(); _hb=setInterval(beat,60000);
   if(!startHeartbeat._on){ startHeartbeat._on=true; document.addEventListener('visibilitychange',()=>{ if(!document.hidden) beat(); }); }
 }
@@ -1786,7 +1787,7 @@ async function doDelCust(id,btn){
     const [cm,ts,ct,nf]=await Promise.all([API.query('comments',[['customerId','==',id]]),API.query('tasks',[['customerId','==',id]]),API.query('contacts',[['customerId','==',id]]),API.query('notifs',[['customerId','==',id]]).catch(()=>[])]);
     await Promise.all([...cm.map(x=>API.remove('comments',x.id)),...ts.map(x=>API.remove('tasks',x.id)),...ct.map(x=>API.remove('contacts',x.id)),...nf.map(x=>API.remove('notifs',x.id).catch(()=>{}))]);
     await API.remove('customers',id);
-    ['_cust','_allCust','_custMine'].forEach(k=>{ if(S[k]) S[k]=S[k].filter(x=>x.id!==id); }); if(S._openC&&S._openC.id===id) S._openC=null;
+    ['_cust','_allCust','_custMine'].forEach(k=>{ if(S[k]) S[k]=S[k].filter(x=>x.id!==id); });
     closeSheet(true); toast('اتمسح العميل'); renderTab();
   }catch(e){ btn.disabled=false; toast('مقدرش أمسح: '+(e.message||e),4000); }
 }
@@ -1819,7 +1820,8 @@ async function attIn(btn){
   const r=await getLocation();
   if(r.err){ toast(r.err,4500); if(btn){ btn.disabled=false; btn.textContent='بصمة'; } return; }
   const now=Date.now(), p={t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'in'};
-  await API.add('attendance',{uid:who.id,name:who.name,day:today(),inAt:now,inLoc:{lat:r.lat,lng:r.lng,acc:r.acc},points:[p],byAdmin:byAdminTag(),createdAt:'__SV__'},attId(who.id,today()));
+  try{ await API.add('attendance',{uid:who.id,name:who.name,day:today(),inAt:now,inLoc:{lat:r.lat,lng:r.lng,acc:r.acc},points:[p],byAdmin:byAdminTag(),createdAt:'__SV__'},attId(who.id,today())); }
+  catch(e){ console.warn('attIn',e); toast('البصمة ما اتسجلتش، اتأكد من النت وجرب تاني',4500); if(btn){ btn.disabled=false; btn.textContent='بصمة'; } return; }
   toast('اتسجلت بصمتك ✓ '+fTime(now)); attTrack(true); renderTab();
 }
 function attEndAsk(){
@@ -1829,7 +1831,8 @@ async function attEnd(btn){
   const who=actor(); btn.disabled=true; btn.textContent='بيحدد موقعك…';
   const r=await getLocation(); const now=Date.now(); const patch={outAt:now};
   if(!r.err) patch.outLoc={lat:r.lat,lng:r.lng,acc:r.acc};
-  await API.update('attendance',attId(who.id,today()),patch);
+  try{ await API.update('attendance',attId(who.id,today()),patch); }
+  catch(e){ console.warn('attEnd',e); toast('الانصراف ما اتسجلش، اتأكد من النت وجرب تاني',4500); btn.disabled=false; btn.textContent='إنهاء الدوام'; return; }
   if(!r.err) await API.arrayAdd('attendance',attId(who.id,today()),'points',{t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'out'}).catch(()=>{});
   attTrack(false); closeSheet(true); toast('اتسجل انصرافك'); renderTab();
 }
@@ -1942,7 +1945,7 @@ document.addEventListener('click',async e=>{
     case 'tapLog': logTap(d.id,d.k); break;
     case 'ctOut': S.ct.outcome=d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b===t)); break;
     case 'ctNext': S.ct.next= S.ct.next===d.v?'':d.v; t.parentNode.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b.dataset.v===S.ct.next)); $('#ctNextD').value=S.ct.next; break;
-    case 'saveContact': saveContact(); break;
+    case 'saveContact': saveContact(t); break;
     case 'setF': S.filt[d.k]=d.v; renderTab(); break;
     case 'actF': S.actFilter=d.v; renderTab(); break;
     case 'actRep': { const fromRow=!!t.closest('.rep'); S.actRep=d.v; renderTab().then(()=>{ if(fromRow&&d.v!=='all'){ const sec=$('#actCustSec'); if(sec) sec.scrollIntoView({behavior:'smooth',block:'start'}); } }); break; }
@@ -1984,7 +1987,7 @@ document.addEventListener('click',async e=>{
     case 'editRep': openEditRep(d.id); break;
     case 'erAct': S.erActive=d.v==='1'; t.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===t)); break;
     case 'erAtt': S.erAtt=d.v==='1'; t.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===t)); break;
-    case 'saveRep': { const patch={name:$('#erN').value.trim(),phone:$('#erP').value.trim(),title:($('#erT')||{value:''}).value.trim(),active:S.erActive}; if($('#erS')) patch.section=$('#erS').value; if(userById(d.id).role==='rep') patch.attendance=S.erAtt; await API.update('users',d.id,patch); Object.assign(userById(d.id),patch); closeSheet(); toast('اتحفظ'); renderTab(); break; }
+    case 'saveRep': { const patch={name:$('#erN').value.trim(),phone:$('#erP').value.trim(),title:($('#erT')||{value:''}).value.trim(),active:S.erActive}; if($('#erS')) patch.section=$('#erS').value; const u0=userById(d.id); if(u0&&u0.role==='rep') patch.attendance=S.erAtt; try{ await API.update('users',d.id,patch); }catch(e){ toast('ما اتحفظش، جرب تاني',4500); break; } if(u0) Object.assign(u0,patch); closeSheet(); toast('اتحفظ'); renderTab(); break; }
   }
 });
 document.addEventListener('change',async e=>{
@@ -1992,7 +1995,7 @@ document.addEventListener('change',async e=>{
   if(k==='rep'||k==='res'){ S.filt[k]=t.value; renderTab(); }
   else if(k==='actRep'){ S.actRep=t.value; renderTab(); }
   else if(k==='taskRep'){ S.taskRep=t.value; openTasksAdmin(); }
-  else if(k==='moveCust'){ await API.update('customers',t.dataset.id,{ownerUid:t.value}); try{ const cm=await API.query('comments',[['customerId','==',t.dataset.id]]); await Promise.all(cm.map(x=>API.update('comments',x.id,{ownerUid:t.value}))); }catch(e){} const c=(S._cust||[]).concat(S._allCust||[]).find(x=>x.id===t.dataset.id); if(c) c.ownerUid=t.value; toast('اتنقل العميل'); }
+  else if(k==='moveCust'){ if(!isAdmin()) return; try{ await API.update('customers',t.dataset.id,{ownerUid:t.value}); }catch(e){ toast('ما اتنقلش، جرب تاني',4500); return; } try{ const cm=await API.query('comments',[['customerId','==',t.dataset.id]]); await Promise.all(cm.map(x=>API.update('comments',x.id,{ownerUid:t.value}))); }catch(e){} const c=(S._cust||[]).concat(S._allCust||[]).find(x=>x.id===t.dataset.id); if(c) c.ownerUid=t.value; toast('اتنقل العميل'); }
 });
 let qT; document.addEventListener('input',e=>{ if(e.target.id==='q'){ clearTimeout(qT); const v=e.target.value; qT=setTimeout(()=>{ S.q=v; const pos=e.target.selectionStart; renderTab().then(()=>{ const q=$('#q'); if(q){ q.focus(); try{q.setSelectionRange(pos,pos);}catch(_){} } }); },300); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.target.id==='lp'||e.target.id==='lu')){ const b=document.querySelector('[data-act="login"]'); b&&b.click(); } });
