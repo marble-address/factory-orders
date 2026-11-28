@@ -283,7 +283,7 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
    ?supa=0 يرجّع الموبايل ده لـ Firestore مؤقتًا، و ?supa=1 يرجّعه لـ Supabase */
 const SUPA_URL = 'https://lyupqkvueqyybgdqmqdj.supabase.co';
 const SUPA_KEY = 'sb_publishable_hSp0tj9Xbfc4n71RQNQv_A__aOWfT5l';
-const SUPA_DEFAULT = false;
+const SUPA_DEFAULT = true;
 const USE_SUPA = (()=>{ try{ const m=/[?&]supa=([01])/.exec(location.search); if(m) localStorage.setItem('mv_supa',m[1]); const v=localStorage.getItem('mv_supa'); return v===null?SUPA_DEFAULT:v==='1'; }catch(e){ return SUPA_DEFAULT; } })();
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyChKkqG2ZVl5K0OUzcJaLRJxcuBL8wKuKY",
@@ -298,7 +298,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r9';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r10';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
