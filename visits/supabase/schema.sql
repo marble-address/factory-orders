@@ -108,7 +108,7 @@ begin
   if top then return true; end if;
   case col
     when 'users' then return (se and o->>'role' = 'rep' and n->>'role' = 'rep')
-      or (id = uid and k <@ array['lastSeen','fcmTokens','notifOn','notifAt','mustSetPw'] and coalesce((n->>'mustSetPw')::boolean, false) = false);
+      or (id = uid and k <@ array['lastSeen','fcmTokens','notifOn','notifAt','mustSetPw','locPerm','device','locAt'] and coalesce((n->>'mustSetPw')::boolean, false) = false);
     when 'customers' then return se or (rep and o->>'ownerUid' = uid and n->>'ownerUid' = uid);
     when 'visits', 'photos', 'contacts', 'comments' then return se;
     when 'tasks' then return se or (rep and o->>'repUid' = uid and k <@ array['status','result','doneAt']);

@@ -51,6 +51,9 @@ svg{flex-shrink:0}
 .beta{background:#7A3E9D;color:#fff;text-align:center;font-size:12px;padding:4px 8px}
 .hdr .mnu{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.14);flex:none}
 .leaflet-container{z-index:0;isolation:isolate}
+.attc .lp{font-size:10.5px;padding:2px 7px;border-radius:999px;margin-inline-start:4px;white-space:nowrap}.lp.off{background:var(--red2);color:var(--red)}.lp.ask{background:var(--amber2);color:var(--amber)}
+.lpc{padding:2px 14px}.lpc .r{display:flex;align-items:center;gap:9px;padding:10px 0;border-bottom:1px solid #F1EDE3}.lpc .r:last-child{border-bottom:0}.lpc .n{flex:1;font-size:13.5px;min-width:0}.lpc .dv{font-size:11px;color:#7A7466}.lpc .s{font-size:11px;padding:3px 8px;border-radius:999px;white-space:nowrap}.s.ok{background:var(--g3);color:var(--g)}.s.half{background:var(--amber2);color:var(--amber)}.s.off{background:var(--red2);color:var(--red)}.s.unk{background:#EFEBE2;color:#7A7466}
+.lpw{display:flex;align-items:center;gap:10px;background:var(--red2);border:1px solid #F1C9C4;color:var(--red);border-radius:14px;padding:9px 11px;margin:2px 0 12px;font-size:12.5px}.lpw b{font-weight:500}.lpw .btn{margin-inline-start:auto;background:var(--red);color:#fff;border:0;padding:6px 10px;border-radius:10px;font-size:12px;white-space:nowrap;width:auto}
 .drw{position:fixed;inset:0;z-index:60;display:flex}
 .drw .bk{flex:1;background:rgba(0,0,0,.38)}
 .drw .pn{width:min(300px,82vw);background:#fff;height:100%;overflow:auto;box-shadow:-4px 0 18px rgba(0,0,0,.12);padding-top:var(--safe-t)}
@@ -299,7 +302,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r11';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r12';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -422,6 +425,9 @@ function shrink(im,max,q){ const s=Math.min(1,max/Math.max(im.naturalWidth,im.na
 
 /* ================= الموقع ================= */
 function getLocation(onUpdate){
+  return _getLocation(onUpdate).then(r=>{ try{ if(r&&!r.err&&S._locPerm!=='always') locSave(TRACKER?(S._locPerm||'inuse'):'inuse'); else if(r&&r.denied) locSave('off'); }catch(e){} return r; });
+}
+function _getLocation(onUpdate){
   return new Promise(resolve=>{
     if(!navigator.geolocation){ resolve({err:'الموبايل مش بيدعم تحديد الموقع'}); return; }
     let best=null, done=false, wid=null;
@@ -744,7 +750,7 @@ async function boot(){
         S.users = isAdmin() ? await API.query('users',[],{swr:true}) : [me];
         render();
       }
-      startHeartbeat(); startRealtime(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh()); handleDeepLink(); prefetchTabs(); trackStart();
+      startHeartbeat(); startRealtime(); locCheck(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh()); handleDeepLink(); prefetchTabs(); trackStart();
     }catch(e){ console.error(e); if(was){ S.me=was; return; } renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
   });
 }
@@ -858,6 +864,7 @@ async function repHome(m){
   const h=new Date().getHours();
   m.innerHTML=`
   <div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(who.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
+  ${!S.viewAs&&attOn(who)&&S._locPerm==='off'?locWarn():''}
   ${attOn(who)?attStrip(S._att):''}
   ${isAndroid&&!TRACKER&&!S.viewAs&&S.me.role==='rep'?`<a class="it" href="${APK_URL}" style="margin-top:10px;background:var(--gold3);border-color:var(--gold2)"><div class="avt" style="background:var(--gold)">${ic('down',20)}</div><div class="grow"><b>${NATIVE?'نزّل النسخة الجديدة من تطبيق الأندرويد':'نزّل تطبيق الأندرويد'}</b><span class="meta">${NATIVE?'امسح التطبيق القديم الأول وبعدين ثبّت الجديد · لازم للموقع':'نفس التطبيق ونفس حسابك · لازم للموقع'}</span></div></a>`:''}
   ${engH}
@@ -1137,7 +1144,7 @@ async function adminTeam(m){
   S.users=await API.query('users',[],{swr:true});
   const rs=reps(); const existing=new Set(rs.map(r=>r.username));
   const pending=curSec()==='rp'?REPS_SEED.filter(r=>!existing.has(r.username)):[];
-  m.innerHTML=`<div class="sec" style="margin-top:4px"><h3>مناديب ${esc(secLabel(curSec()))}</h3><span class="cnt">${rs.length}</span></div>
+  m.innerHTML=`${locCard(rs)}<div class="sec" style="margin-top:4px"><h3>مناديب ${esc(secLabel(curSec()))}</h3><span class="cnt">${rs.length}</span></div>
   ${rs.map(r=>`<div class="rep"><div class="top"><div class="avt" style="background:${r.active?repColor(r.id):'#B9B3A5'}">${esc(initials(r.name))}</div>
     <div class="grow"><b style="font-weight:500">${esc(r.name)}</b><div class="small muted">${r.title?esc(r.title)+' · ':''}اسم المستخدم: <span dir="ltr">${esc(r.username)}</span>${r.phone?` · <span dir="ltr">${esc(r.phone)}</span>`:''}</div></div>
     ${r.active?'<span class="badge">مفعّل</span>':'<span class="badge grey">موقوف</span>'}</div>
@@ -1180,7 +1187,7 @@ async function doSetPw(btn){
     await API.changePassword(a);
     await API.update('users',S.me.id,{mustSetPw:false}); S.me.mustSetPw=false;
     S.users = isAdmin() ? await API.query('users',[],{fresh:true}) : [S.me];
-    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); startRealtime(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh());
+    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); startRealtime(); locCheck(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh());
   }catch(e){
     if(e&&e.code==='auth/requires-recent-login'){ await API.logout(); renderLogin('اطلب لينك دخول جديد من المدير.'); return; }
     btn.disabled=false; btn.textContent='حفظ ودخول'; $('#lerr').textContent='مقدرش أحفظ: '+(e.message||e);
@@ -2024,6 +2031,45 @@ function attOut(a){
   return null;
 }
 const hm = ms => { const m=Math.max(0,Math.round(ms/6e4)); return Math.floor(m/60)+' س '+(m%60)+' د'; };
+/* ---------- متابعة إذن الموقع ----------
+   كل ما المندوب يفتح التطبيق: بنعرف حالة إذن الموقع ونوع الموبايل ونحفظها في حسابه (locPerm/device/locAt)
+   always = مسموح طول الوقت (تطبيق الأندرويد) · inuse = أثناء الاستخدام · ask = مستني السماح · off = مقفول */
+const devKind = () => TRACKER||NATIVE ? 'android-app' : isIOS ? 'ios' : /Android/i.test(navigator.userAgent) ? 'android-web' : 'web';
+async function locState(){
+  if(TRACKER){ try{ const st=await nCall('Tracker','status',{}); const l=String(st.location||''), b=String(st.background||'');
+    return l==='granted' ? (b==='granted'?'always':'inuse') : l==='denied'?'off':'ask'; }catch(e){} }
+  try{ if(navigator.permissions&&navigator.permissions.query){ const q=await navigator.permissions.query({name:'geolocation'}); return q.state==='granted'?'inuse':q.state==='denied'?'off':'ask'; } }catch(e){}
+  return S._locPerm||'';
+}
+function locSave(st){
+  if(!st||!S.me||S.viewAs||API.mode!=='live'||!attOn(S.me)) return;
+  const prev=S._locPerm; S._locPerm=st;
+  if(prev!==st && S.tab==='home') softRefresh();
+  const now=Date.now(), dv=devKind();
+  if(S.me.locPerm===st && S.me.device===dv && now-(S.me.locAt||0)<10*60e3) return;
+  S.me.locPerm=st; S.me.device=dv; S.me.locAt=now;
+  API.update('users',S.me.id,{locPerm:st,device:dv,locAt:now},{keep:true}).catch(()=>{});
+}
+async function locCheck(){ if(!S.me||S.viewAs||!attOn(S.me)) return; locSave(await locState()); }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) locCheck(); });
+function locWarn(){ return `<div class="lpw">${ic('pin',18)}<div><b>الموقع مقفول</b><br><span style="color:#8a3b32">اسمح للتطبيق بالموقع عشان البصمة والزيارات تتسجل</span></div><button class="btn" data-act="locHelp">إزاي أفتحه؟</button></div>`; }
+function locHelp(){
+  const d=devKind();
+  const steps = d==='ios' ? ['افتح <b>الإعدادات</b> ← <b>الخصوصية والأمان</b> ← <b>خدمات الموقع</b>، وخليها شغالة.','انزل لـ <b>Safari Websites</b> (مواقع Safari) واختار <b>«أثناء استخدام التطبيق»</b>.','شغّل <b>الموقع الدقيق</b>.','اقفل تطبيق «قسم المشاريع» خالص وافتحه تاني من أيقونته.']
+    : d==='android-app' ? ['افتح <b>الإعدادات</b> ← <b>التطبيقات</b> ← <b>قسم المشاريع</b> ← <b>الأذونات</b> ← <b>الموقع</b>.','اختار <b>«السماح طوال الوقت»</b> وشغّل <b>الموقع الدقيق</b>.','اتأكد إن الموقع (GPS) شغال من الشريط اللي فوق.','ارجع للتطبيق.']
+    : ['اتأكد إن الموقع (GPS) شغال من الشريط اللي فوق.','في Chrome: <b>⋮</b> ← <b>الإعدادات</b> ← <b>إعدادات المواقع</b> ← <b>الموقع</b>، وشيل marble-address.github.io من «محظور».','ارجع للتطبيق وحدّث الصفحة، ولما يسألك عن الموقع اختار <b>«السماح»</b>.'];
+  sheet('إزاي تفتح الموقع',`<div class="small" style="line-height:1.9">${steps.map((t,i)=>`<div style="display:flex;gap:8px;margin-bottom:8px"><span class="badge">${i+1}</span><div>${t}</div></div>`).join('')}</div>`,`<button class="btn" data-act="closeSheet">تمام</button>`);
+}
+function locCard(rs){
+  if(!isAdmin()||S.viewAs) return '';
+  const us=rs.filter(u=>u.active!==false&&attOn(u)&&(!u.test||attTestView())); if(!us.length) return '';
+  const L={always:['ok','مسموح طول الوقت'],inuse:['half','أثناء الاستخدام بس'],ask:['half','مستني السماح'],off:['off','مقفول']};
+  const DV={'android-app':'أندرويد · التطبيق','android-web':'أندرويد · المتصفح',ios:'آيفون',web:'متصفح'};
+  const ord=u=>({off:0,ask:1,inuse:2,always:3}[u.locPerm]??4);
+  return `<div class="sec" style="margin-top:4px"><h3>حالة الموقع عند المناديب</h3></div><div class="card lpc">${us.slice().sort((a,b)=>ord(a)-ord(b)).map(u=>{
+    const st=L[u.locPerm]; const seen=u.locAt||u.lastSeen;
+    return `<div class="r"><div class="n">${esc(u.name)}<div class="dv">${u.locPerm?(DV[u.device]||'—')+(seen?' · آخر فتح '+fWhen(seen):''):'—'}</div></div><span class="s ${st?st[0]:'unk'}">${st?st[1]:'لسه ما فتحش التطبيق'}</span></div>`; }).join('')}</div>`;
+}
 function attStrip(a){
   if(!a||!a.inAt) return `<div class="att0"><div class="ai">${ic('finger',19)}</div><div class="grow"><b>ابدأ دوامك</b><small>اضغط للبصمة وتسجيل موقعك</small></div><button class="attb" data-act="attIn">بصمة</button></div>`;
   const o=attOut(a);
@@ -2045,7 +2091,8 @@ function attEndAsk(){
 async function attEnd(btn){
   const who=actor(); btn.disabled=true; btn.textContent='بيحدد موقعك…';
   const r=await getLocation(); const now=Date.now(); const patch={outAt:now};
-  if(!r.err) patch.outLoc={lat:r.lat,lng:r.lng,acc:r.acc};
+  if(r.err){ if(r.denied&&!S.viewAs) locSave('off'); toast(r.err,4500); btn.disabled=false; btn.textContent='إنهاء الدوام'; if(r.denied&&!S.viewAs){ closeSheet(true); locHelp(); } return; }   // مفيش انصراف من غير موقع (زي البصمة)
+  patch.outLoc={lat:r.lat,lng:r.lng,acc:r.acc};
   try{ await API.update('attendance',attId(who.id,today()),patch); }
   catch(e){ console.warn('attEnd',e); toast('الانصراف ما اتسجلش، اتأكد من النت وجرب تاني',4500); btn.disabled=false; btn.textContent='إنهاء الدوام'; return; }
   if(!r.err) await API.arrayAdd('attendance',attId(who.id,today()),'points',{t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'out'}).catch(()=>{});
@@ -2184,7 +2231,7 @@ async function attCard(vsToday){
   return `<div class="sec"><h3>حضور النهارده</h3></div><div class="card attc">${rows.map(({u,a})=>{
     const o=attOut(a), nv=vsToday.filter(v=>v.repUid===u.id).length;
     const cls=!a?'red':o?'':'on', txt=!a?'<span style="color:var(--red)">لسه ما بصمش</span>': o?`${fTime(a.inAt)} ← ${fTime(o.t)}`:`${fTime(a.inAt)} · ${nv} ${nv===1?'زيارة':'زيارات'}`;
-    return `<div class="ar"><i class="dot ${cls}"></i><div class="an">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}</div><div class="am">${txt}</div>${attTestView()?`<button class="nb" data-act="alertRep" data-id="${u.id}" aria-label="ابعت تنبيه">${ic('bell',16)}</button>`:''}${a?`<button class="ap" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',18)}</button>`:attTestView()?'<span style="width:22px;flex:0 0 auto"></span>':''}</div>`; }).join('')}</div>`;
+    return `<div class="ar"><i class="dot ${cls}"></i><div class="an">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}${u.locPerm==='off'?'<span class="lp off">الموقع مقفول</span>':u.locPerm==='ask'?'<span class="lp ask">مستني السماح</span>':''}</div><div class="am">${txt}</div>${attTestView()?`<button class="nb" data-act="alertRep" data-id="${u.id}" aria-label="ابعت تنبيه">${ic('bell',16)}</button>`:''}${a?`<button class="ap" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',18)}</button>`:attTestView()?'<span style="width:22px;flex:0 0 auto"></span>':''}</div>`; }).join('')}</div>`;
 }
 /* «ابعت تنبيه» من «حضور النهارده» — إشعار فوري للمندوب حتى لو التطبيق مقفول */
 const AL_QUICK=['لا تنسى تنهي دوامك','افتح التطبيق','كلمني ضروري','ابدأ دوامك وبصّم'];
@@ -2307,6 +2354,7 @@ document.addEventListener('click',async e=>{
     case 'pickSec': S.sec=d.v; try{ localStorage.setItem('ma_sec',d.v); }catch(e){} S.filt={}; S.mapRep='all'; S.actRep='all'; closeSecs(); render(); window.scrollTo(0,0); break;
     case 'closeSecs': closeSecs(); break;
     case 'alertRep': alertRep(d.id); break;
+    case 'locHelp': locHelp(); break;
     case 'alPick': alPick(t); break;
     case 'alSend': alSend(d.id); break;
     case 'routeOf': S.tab='map'; S.mapRep=d.id; S.mapDay= S.period==='yesterday'?addDays(-1):today(); render(); break;

@@ -2,7 +2,7 @@
 -- التطبيق لما يستقبلها بيعيد قراءة الشاشة المفتوحة من دوال fs_* (بنفس الصلاحيات)
 create or replace function public.docs_notify() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare r record; ign text[] := array['lastSeen','notifAt','pushed','pushedAt'];
+declare r record; ign text[] := array['lastSeen','notifAt','pushed','pushedAt','locAt'];
 begin
   r := coalesce(new, old);
   if tg_op = 'UPDATE' and (new.data - ign) = (old.data - ign) then return null; end if;   -- نبض «متصل» وعلامات الإرسال: مش تغيير يستاهل
