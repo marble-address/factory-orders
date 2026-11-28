@@ -136,7 +136,7 @@ main{padding:14px 14px calc(var(--safe-b) + 100px);max-width:760px;margin:0 auto
 .att1 button{background:#fff;color:#0A5434;border:1px solid #BFDCCB;border-radius:999px;padding:3px 11px;font-size:11px}
 .att2{display:flex;align-items:center;gap:8px;background:#fff;color:#5F5A4E;border:1px solid #E6E0D2;border-radius:999px;padding:6px 12px;margin:2px 0 12px;font-size:11.5px}
 .dot.red{background:#E0483A}
-.attc{padding:2px 14px}.attc .ar{display:flex;align-items:center;gap:9px;padding:11px 0;border-bottom:1px solid #F1EDE3}.attc .ar:last-child{border-bottom:0}.attc .an{flex:1;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attc .am{font-size:11.5px;color:#7A7466;white-space:nowrap}.attc .ap{color:var(--g);display:flex;padding:2px;background:none;border:0}
+.attc{padding:2px 14px}.attc .ar{display:flex;align-items:center;gap:9px;padding:11px 0;border-bottom:1px solid #F1EDE3}.attc .ar:last-child{border-bottom:0}.attc .an{flex:1;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attc .am{font-size:11.5px;color:#7A7466;white-space:nowrap}.attc .ap{color:var(--g);display:flex;padding:2px;background:none;border:0}.attc .nb{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:var(--gold3);border:1px solid var(--gold2);color:var(--gold);padding:0;flex:0 0 auto}.attc .nb svg{width:15px;height:15px}.alq{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.alq .btn{font-weight:400}#alTxt{width:100%;min-height:70px;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:13px;resize:none}
 .attv{margin:6px 18px 0 0;border-inline-start:2px solid #E6E0D2;padding-inline-start:10px}.attv button{display:block;width:100%;text-align:start;font-size:11.5px;color:#3D3A33;padding:3px 0}.attv span{color:#7A7466;margin-inline-end:8px;font-size:11px}.attv i{font-style:normal;color:#7A7466}
 .ib2{width:30px;height:30px;border-radius:9px;background:var(--g3);color:var(--g);display:flex;align-items:center;justify-content:center}
 .badge.gold{background:var(--gold2);color:#8A6E1E}
@@ -292,7 +292,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r7';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r8';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -2106,7 +2106,22 @@ async function attCard(vsToday){
   return `<div class="sec"><h3>حضور النهارده</h3></div><div class="card attc">${rows.map(({u,a})=>{
     const o=attOut(a), nv=vsToday.filter(v=>v.repUid===u.id).length;
     const cls=!a?'red':o?'':'on', txt=!a?'<span style="color:var(--red)">لسه ما بصمش</span>': o?`${fTime(a.inAt)} ← ${fTime(o.t)}`:`${fTime(a.inAt)} · ${nv} ${nv===1?'زيارة':'زيارات'}`;
-    return `<div class="ar"><i class="dot ${cls}"></i><div class="an">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}</div><div class="am">${txt}</div>${a?`<button class="ap" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',18)}</button>`:''}</div>`; }).join('')}</div>`;
+    return `<div class="ar"><i class="dot ${cls}"></i><div class="an">${esc(u.name)}${u.test?' <span class="badge">تجربة</span>':''}</div><div class="am">${txt}</div>${attTestView()?`<button class="nb" data-act="alertRep" data-id="${u.id}" aria-label="ابعت تنبيه">${ic('bell',16)}</button>`:''}${a?`<button class="ap" data-act="routeOf" data-id="${u.id}" aria-label="خط السير">${ic('pin',18)}</button>`:attTestView()?'<span style="width:22px;flex:0 0 auto"></span>':''}</div>`; }).join('')}</div>`;
+}
+/* «ابعت تنبيه» من «حضور النهارده» — إشعار فوري للمندوب حتى لو التطبيق مقفول */
+const AL_QUICK=['لا تنسى تنهي دوامك','افتح التطبيق','كلمني ضروري','ابدأ دوامك وبصّم'];
+function alertRep(id){
+  const u=userById(id); if(!u) return;
+  sheet('تنبيه لـ '+esc(u.name),`<div class="small" style="color:var(--mut);margin-bottom:10px">هيوصله إشعار على الموبايل فورًا، حتى لو التطبيق مقفول.</div>
+    <div class="alq">${AL_QUICK.map((c,i)=>`<button class="btn sm ${i===0?'gold':'ghost'}" data-act="alPick" data-i="${i}">${c}</button>`).join('')}</div>
+    <textarea id="alTxt" placeholder="أو اكتب رسالة…">${AL_QUICK[0]}</textarea>`,
+    `<button class="btn" data-act="alSend" data-id="${id}">${ic('bell',16)} ابعت التنبيه</button>`);
+}
+function alPick(t){ const i=+t.dataset.i; document.querySelectorAll('.alq .btn').forEach((b,k)=>{ b.classList.toggle('gold',k===i); b.classList.toggle('ghost',k!==i); }); const x=$('#alTxt'); if(x) x.value=AL_QUICK[i]; }
+function alSend(id){
+  const x=$('#alTxt'), txt=(x&&x.value||'').trim(); if(!txt){ toast('اكتب الرسالة الأول'); return; }
+  const u=userById(id); closeSheet(); toast('اتبعت التنبيه لـ '+(u?u.name:'المندوب')+' ✓');
+  notify(id,'تنبيه من '+(S.me.name||'المدير'),txt,{kind:'alert',section:secOf(u||{})});
 }
 /* نقاط البصمة على الخريطة */
 async function attMapPoints(rep,day){
@@ -2213,6 +2228,9 @@ document.addEventListener('click',async e=>{
     case 'openEngAdmin': openEngAdmin(); break;
     case 'pickSec': S.sec=d.v; try{ localStorage.setItem('ma_sec',d.v); }catch(e){} S.filt={}; S.mapRep='all'; S.actRep='all'; closeSecs(); render(); window.scrollTo(0,0); break;
     case 'closeSecs': closeSecs(); break;
+    case 'alertRep': alertRep(d.id); break;
+    case 'alPick': alPick(t); break;
+    case 'alSend': alSend(d.id); break;
     case 'routeOf': S.tab='map'; S.mapRep=d.id; S.mapDay= S.period==='yesterday'?addDays(-1):today(); render(); break;
     case 'visitsOf': S.tab='visits'; S.filt.rep=d.id; S.filt.av=S.period; S.filt.flag=false; render(); break;
     case 'mapDay': S.mapDay=d.v; renderTab(); break;
