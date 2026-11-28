@@ -14,7 +14,13 @@
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- الخط ما يوقفش ظهور الصفحة (بيظهر Arial لحظة وبعدين الخط) + مكتبات Firebase تبدأ تنزل فورًا -->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js">
 <style>
 :root{
   --g:#065A36;--g2:#0B7348;--g3:#DCEBE2;--g4:#F0F7F3;
@@ -281,7 +287,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r1';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r2';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -422,6 +428,30 @@ window.addEventListener('unhandledrejection',e=>{ const m=String(e.reason&&e.rea
 const API = {};
 const TS_FIELDS = ['createdAt','updatedAt'];
 
+/* كاش محلي بسيط على الموبايل (IndexedDB) — لو مش متاح التطبيق بيشتغل عادي من غيره */
+const IDBC=(()=>{
+  let dbp=null;
+  const open=()=> dbp || (dbp=new Promise(res=>{ try{ const r=indexedDB.open('mv_cache',1); r.onupgradeneeded=()=>r.result.createObjectStore('q'); r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); r.onblocked=()=>res(null); setTimeout(()=>res(null),1500); }catch(e){ res(null); } }));
+  const tx=async(mode,fn)=>{ try{ const db=await open(); if(!db) return null; return await new Promise(res=>{ const t=db.transaction('q',mode); const st=t.objectStore('q'); const r=fn(st); t.oncomplete=()=>res(r&&'result' in r?r.result:null); t.onerror=t.onabort=()=>res(null); }); }catch(e){ return null; } };
+  return {
+    get:k=>Promise.race([tx('readonly',st=>st.get(k)), sleep(800).then(()=>null)]),
+    set:(k,v)=>{ tx('readwrite',st=>st.put(v,k)); },
+    delPrefix:p=>{ tx('readwrite',st=>st.delete(IDBKeyRange.bound(p,p+'\uffff'))); },
+    clear:()=>{ tx('readwrite',st=>st.clear()); }
+  };
+})();
+/* لما بيانات جديدة توصل من السيرفر في الخلفية: نحدّث الشاشة الحالية بهدوء (من غير ما نقاطع كتابة أو شاشة مفتوحة) */
+let _srT=null;
+function softRefresh(){
+  clearTimeout(_srT);
+  _srT=setTimeout(()=>{
+    if(!S.me||!$('#main')) return;
+    const a=document.activeElement;
+    if($('#ov') || $('#drw') || document.hidden || S.tab==='map' || (a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))){ S._staleUI=true; return; }
+    S._staleUI=false; const y=window.scrollY; renderTab().then(()=>{ if(Math.abs(window.scrollY-y)>2) window.scrollTo(0,y); });
+  },350);
+}
+
 function liveAPI(){
   firebase.initializeApp(FIREBASE_CONFIG);
   const auth = firebase.auth(), fs = firebase.firestore();
@@ -429,9 +459,12 @@ function liveAPI(){
   try{ fs.settings({experimentalForceLongPolling:true, merge:true}); }catch(e){}
   // من غير كاش IndexedDB: على الآيفون لما التطبيق يروح للخلفية (مشاركة ملف مثلًا) الكاش ده كان بيقفل Firestore ("client has been terminated")
   // بدله كاش سريع في الذاكرة لكل استعلام (Q) بيتمسح مع أي تعديل
-  const QC=new Map(), QTTL=60000;
+  // السرعة: الشاشات بتظهر فورًا من آخر بيانات محفوظة على الموبايل (IndexedDB خاص بينا، مش كاش Firestore)،
+  // وفي نفس اللحظة بتتحدث من السيرفر في الخلفية — ولو فيه جديد الشاشة بتتحدث لوحدها (stale-while-revalidate)
+  const QC=new Map(), QTTL=60000, GEN={}, INF=new Map();
   const qkey=(col,f)=>col+'|'+JSON.stringify(f);
-  const dropCol=col=>{ for(const k of [...QC.keys()]) if(k.startsWith(col+'|')) QC.delete(k); };
+  const ukey=k=>((auth.currentUser&&auth.currentUser.uid)||S._cuid||'-')+'|'+k;
+  const dropCol=col=>{ GEN[col]=(GEN[col]||0)+1; for(const k of [...QC.keys()]) if(k.startsWith(col+'|')) QC.delete(k); IDBC.delPrefix(ukey(col+'|')); };
   const TO=(p,ms,msg)=>Promise.race([p, sleep(ms).then(()=>{ throw new Error(msg||'التحميل اتأخر، اتأكد من النت وحاول تاني'); })]);
   const guard=e=>{ const m=String(e&&e.message||e); if(/terminated|INTERNAL ASSERTION|IndexedDB/i.test(m)) { hardReload(); } throw e; };
   const SV = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -444,7 +477,7 @@ function liveAPI(){
     onAuth(cb){ auth.onAuthStateChanged(u=>cb(u?{uid:u.uid,email:u.email}:null)); },
     async login(u,p){ await auth.signInWithEmailAndPassword(em(u),p); },
     async createAdmin(p){ const c=await auth.createUserWithEmailAndPassword(em(ADMIN_USERNAME),p); await fs.collection('users').doc(c.user.uid).set({name:ADMIN_NAME,username:ADMIN_USERNAME,role:'admin',active:true,createdAt:SV()}); },
-    async logout(){ await auth.signOut(); },
+    async logout(){ QC.clear(); IDBC.clear(); try{ localStorage.removeItem('mv_last'); }catch(e){} await auth.signOut(); },
     async changePassword(p){ await auth.currentUser.updatePassword(p); },
     async idToken(){ return auth.currentUser.getIdToken(); },
     async createRep(d){
@@ -457,7 +490,8 @@ function liveAPI(){
       await sec.auth().signOut();
       return id;
     },
-    async get(col,id){
+    async get(col,id,opt={}){
+      if(opt.swr) return (await this._q(col,[['#id',id]],{swr:true}))[0]||null;   // مستند واحد بنفس طريقة الحفظ السريع
       const once=()=>TO(fs.collection(col).doc(id).get(),12000);
       try{ let d; try{ d=await once(); }catch(e){ if(!/اتأخر/.test(e.message)) throw e; await this.reconnect(); d=await once(); }
         return d.exists?fromDoc(d):null; }catch(e){ guard(e); } },
@@ -471,22 +505,37 @@ function liveAPI(){
       const v=await this._q(col,server,opt);
       return local.length? v.filter(o=>local.every(([f,op,x])=> op==='>='?o[f]>=x : op==='<='?o[f]<=x : op==='>'?o[f]>x : op==='<'?o[f]<x : true)) : v;
     },
-    async _q(col,filters=[],opt={}){
-      const k=qkey(col,filters), hit=QC.get(k);
-      if(!opt.fresh && hit && Date.now()-hit.t<QTTL) return hit.v.slice();
+    async _net(col,filters){
+      if(filters.length===1 && filters[0][0]==='#id'){ const d=await this.get(col,filters[0][1]); return d?[d]:[]; }
       let q=fs.collection(col);
       for(const [f,op,v] of filters) q=q.where(f,op, TS_FIELDS.includes(f)&&typeof v==='number'?firebase.firestore.Timestamp.fromMillis(v):v);
-      try{
-        let s; try{ s=await TO(q.get(),12000); }catch(e){ if(!/اتأخر/.test(e.message)) throw e; await this.reconnect(); s=await TO(q.get(),15000); }
-        const v=s.docs.map(fromDoc);
-        QC.set(k,{t:Date.now(),v}); return v.slice();
-      }catch(e){ if(hit) return hit.v.slice(); guard(e); }
+      let s; try{ s=await TO(q.get(),12000); }catch(e){ if(!/اتأخر/.test(e.message)) throw e; await this.reconnect(); s=await TO(q.get(),15000); }
+      return s.docs.map(fromDoc);
+    },
+    _put(k,col,v,g){ if((GEN[col]||0)!==g) return false; const old=QC.get(k); QC.set(k,{t:Date.now(),v}); IDBC.set(ukey(k),{t:Date.now(),v}); return !old || JSON.stringify(old.v)!==JSON.stringify(v); },
+    async _q(col,filters=[],opt={}){
+      const k=qkey(col,filters); let hit=QC.get(k);
+      if(opt.swr && !opt.fresh){
+        if(!hit){ const d=await IDBC.get(ukey(k)); if(d && d.v && !QC.get(k)){ hit={t:0,v:d.v}; QC.set(k,hit); } else hit=QC.get(k); }
+        if(hit){
+          if(Date.now()-hit.t>=QTTL && !INF.has(k)){   // قديمة: نعرضها فورًا ونحدّث في الخلفية
+            const g=GEN[col]||0;
+            INF.set(k, this._net(col,filters).then(v=>{ if(this._put(k,col,v,g)) softRefresh(); }).catch(()=>{}).finally(()=>INF.delete(k)));
+          }
+          return hit.v.slice();
+        }
+      }
+      if(!opt.fresh && hit && Date.now()-hit.t<QTTL) return hit.v.slice();
+      const g=GEN[col]||0;
+      try{ const v=await this._net(col,filters); this._put(k,col,v,g); return v.slice(); }
+      catch(e){ if(hit) return hit.v.slice(); guard(e); }
     },
     clearCache(col){ if(col) dropCol(col); else QC.clear(); },
+    staleAll(){ for(const h of QC.values()) h.t=0; },
     async reconnect(){ try{ await TO(fs.disableNetwork(),3000); }catch(e){} try{ await TO(fs.enableNetwork(),5000); }catch(e){} },
     async arrayAdd(col,id,field,val){ dropCol(col); await settle(fs.collection(col).doc(id).update({[field]:firebase.firestore.FieldValue.arrayUnion(val)})); },
     async add(col,data,id){ data=withSec(col,data); dropCol(col); const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); dropCol(col); return {id:ref.id,saved}; },
-    async update(col,id,patch){ dropCol(col); const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); dropCol(col); return {saved}; },
+    async update(col,id,patch,opt={}){ if(opt.keep) return {saved:await settle(fs.collection(col).doc(id).update(toData(patch)))}; dropCol(col); const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); dropCol(col); return {saved}; },
     async batchAdd(col,rows){ rows=rows.map(r=>withSec(col,r)); dropCol(col); for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } dropCol(col); },
     async remove(col,id){ dropCol(col); await fs.collection(col).doc(id).delete(); dropCol(col); },
     async addToken(uid,tok){ await fs.collection('users').doc(uid).update({fcmTokens:firebase.firestore.FieldValue.arrayUnion(tok),notifOn:true,notifAt:Date.now()}); }
@@ -595,7 +644,7 @@ async function loadLeaflet(){ if(!window.L){ loadCss('https://cdnjs.cloudflare.c
 async function loadXLSX(){ if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); }
 
 async function boot(){
-  newBuild().then(b=>{ if(b){ try{ if(sessionStorage.getItem('mv_bld')===b) return; sessionStorage.setItem('mv_bld',b); }catch(e){} location.reload(); } });
+  setTimeout(()=>newBuild().then(b=>{ if(b){ try{ if(sessionStorage.getItem('mv_bld')===b) return; sessionStorage.setItem('mv_bld',b); }catch(e){} location.reload(); } }),4000);   // بعد ما التطبيق يفتح، مش قبله
   const DEMO = /[?&]demo(=|&|$)/.test(location.search);
   if(FIREBASE_CONFIG && !DEMO){
     try{
@@ -610,17 +659,36 @@ async function boot(){
     let inv=null; try{ const t=decodeURIComponent(escape(atob(decodeURIComponent(invM[1])))); const i=t.indexOf(':'); inv={u:t.slice(0,i),p:t.slice(i+1)}; }catch(e){}
     if(inv&&API.mode==='live'){ try{ await API.logout(); }catch(e){} try{ await API.login(inv.u,inv.p); }catch(e){ S._invErr=true; } }
   }
+  // فتح فوري: لو نفس الموبايل دخل قبل كده، نعرض الرئيسية من آخر بيانات محفوظة قبل ما الدخول يتأكد من السيرفر
+  let pre=null;
+  if(API.mode==='live' && !invM){ try{ pre=JSON.parse(localStorage.getItem('mv_last')||'null'); }catch(e){} }
+  if(pre && pre.me && pre.me.id && !pre.me.mustSetPw && pre.me.active!==false){
+    S._cuid=pre.me.id; S.me=pre.me; S.tab='home'; S.viewAs=null; S._pre=true;
+    S.users = isAdmin() ? await API.query('users',[],{swr:true}).catch(()=>[pre.me]) : [pre.me];
+    render();
+  }
+  const saveMe=me=>{ try{ localStorage.setItem('mv_last',JSON.stringify({me})); }catch(e){} };
   API.onAuth(async u=>{
-    if(u && S.me && S.me.id===u.uid && !S.me.mustSetPw) return;   // نفس المستخدم (رجوع من الخلفية): متعيدش التحميل من الأول
-    if(!u){ S.me=null; renderLogin(S._invErr?'اللينك ده اتستخدم قبل كده أو اتلغى. اطلب لينك جديد من المدير.':undefined); S._invErr=false; return; }
+    if(u && S.me && S.me.id===u.uid && !S.me.mustSetPw && !S._pre) return;   // نفس المستخدم (رجوع من الخلفية): متعيدش التحميل من الأول
+    if(!u){ S.me=null; S._pre=false; renderLogin(S._invErr?'اللينك ده اتستخدم قبل كده أو اتلغى. اطلب لينك جديد من المدير.':undefined); S._invErr=false; return; }
+    const was=S._pre && S.me && S.me.id===u.uid ? S.me : null; S._pre=false; S._cuid=u.uid;
     try{
       const me = await API.get('users',u.uid);
       if(!me || me.active===false){ renderLogin('الحساب ده مش مفعّل. كلّم مدير المشاريع.'); await API.logout(); return; }
-      S.me=me; S.tab='home'; S.viewAs=null;
+      S.me=me; saveMe(me);
       if(me.mustSetPw && API.mode==='live'){ renderSetPw(); return; }
-      S.users = isAdmin() ? await API.query('users') : [me];
-      render(); startHeartbeat(); if(!BETA) silentPushRefresh(); handleDeepLink();
-    }catch(e){ console.error(e); renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
+      if(was && was.role===me.role && (was.section||'')===(me.section||'')){
+        // الشاشة ظاهرة بالفعل من المحفوظ: نكمّل في الخلفية من غير ما نعيد رسمها
+        if(isAdmin()) S.users=await API.query('users',[],{swr:true}).catch(()=>S.users);
+        else S.users=[me];
+        if(!$('#ov')) renderTab();   // لو حاجة ما اتحملتش قبل تأكيد الدخول تكمل دلوقتي (من المحفوظ، فوري)
+      } else {
+        S.tab='home'; S.viewAs=null;
+        S.users = isAdmin() ? await API.query('users',[],{swr:true}) : [me];
+        render();
+      }
+      startHeartbeat(); if(!BETA) silentPushRefresh(); handleDeepLink(); prefetchTabs();
+    }catch(e){ console.error(e); if(was){ S.me=was; return; } renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
   });
 }
 
@@ -687,9 +755,9 @@ async function renderTab(){
 }
 
 /* ================= بيانات مشتركة ================= */
-async function visitsOf(uid){ const v=await API.query('visits',[['repUid','==',uid]]); return v.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
-async function customersOf(uid){ return API.query('customers',[['ownerUid','==',uid]]); }
-async function allVisitsSince(t){ const v=await API.query('visits',[['createdAt','>=',t]]); return v.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
+async function visitsOf(uid){ const v=await API.query('visits',[['repUid','==',uid]],{swr:true}); return v.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
+async function customersOf(uid){ return API.query('customers',[['ownerUid','==',uid]],{swr:true}); }
+async function allVisitsSince(t){ const v=await API.query('visits',[['createdAt','>=',t]],{swr:true}); return v.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); }
 function periodRange(p){
   const s=startOfDay();
   if(p==='today') return [s,Infinity,'اليوم'];
@@ -723,7 +791,7 @@ function custItem(c){
 /* ================= شاشات المندوب ================= */
 async function repHome(m){
   const uid=subjectUid(); const who=S.viewAs||S.me;
-  const [vs,cs,ts,att]=await Promise.all([visitsOf(uid),customersOf(uid),tasksFor(uid).catch(()=>[]),attOn(who)?attGet(uid,today()):null]);
+  const [vs,cs,ts,att,engH]=await Promise.all([visitsOf(uid),customersOf(uid),tasksFor(uid).catch(()=>[]),attOn(who)?attGet(uid,today(),{swr:true}):null,repEngCard(uid)]);
   S._att=att; if(attOn(who)) attTrack(!!(att&&att.inAt&&!attOut(att))); else attTrack(false);
   S._cust=cs; S._vis=vs; S._tasks=ts; const openT=ts.filter(t=>t.status==='open');
   const s0=startOfDay(), wk=periodRange('week')[0];
@@ -734,7 +802,7 @@ async function repHome(m){
   m.innerHTML=`
   <div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(who.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
   ${attOn(who)?attStrip(S._att):''}
-  ${await repEngCard(uid)}
+  ${engH}
   <div class="stats">
     <div class="st"><b>${vToday}</b><span>زيارات اليوم</span></div>
     <div class="st gold"><b>${vWeek}</b><span>زيارات الأسبوع</span></div>
@@ -823,15 +891,24 @@ function actItem(c,admin){
 /* ================= شاشات المدير ================= */
 async function adminHome(m){
   const p=S.period; const [a,b,lbl]=periodRange(p);
-  const vs=(await allVisitsSince(a===0?0:a)).filter(v=>v.createdAt<b&&inSec(v.repUid));
-  const custs=(await API.query('customers')).filter(c=>inSec(c.ownerUid));
-  S._allCust=custs;
-  const newC=custs.filter(c=>c.source!=='old'&&c.source!=='active'&&c.createdAt>=a&&c.createdAt<b).length;
+  // كل البيانات بتتجاب مع بعض في نفس الوقت، ومن غير ما نحمّل كل العملاء (بس الجداد في الفترة + اللي عليهم متابعة متأخرة)
+  const td=today(), s0=startOfDay();
+  const [vsAll,newCs,dueCs,tasksH,engH]=await Promise.all([
+    allVisitsSince(a===0?0:a),
+    API.query('customers',a===0?[['source','==','field']]:[['createdAt','>=',a]],{swr:true}),
+    API.query('customers',[['nextVisitAt','>',''],['nextVisitAt','<',td]],{swr:true}),
+    adminTasksCard(), adminEngCard()
+  ]);
+  const vs=vsAll.filter(v=>v.createdAt<b&&inSec(v.repUid));
+  const newCust=newCs.filter(c=>inSec(c.ownerUid)), dueCust=dueCs.filter(c=>inSec(c.ownerUid));
+  S._allCust=newCust.concat(dueCust.filter(c=>!newCust.some(x=>x.id===c.id)));
+  const newC=newCust.filter(c=>c.source!=='old'&&c.source!=='active'&&c.createdAt>=a&&c.createdAt<b).length;
   const flagged=vs.filter(v=>v.flagged).length;
   const quotes=vs.filter(v=>v.result==='طلب عرض سعر').length, sold=vs.filter(v=>v.result==='تم البيع').length;
   const rs=reps(); const maxV=Math.max(1,...rs.map(r=>vs.filter(v=>v.repUid===r.id).length));
   const byRes=RESULTS.map(([r])=>[r,vs.filter(v=>v.result===r).length]).filter(x=>x[1]);
-  const dueAll=custs.filter(c=>c.nextVisitAt&&c.nextVisitAt<today()&&!CLOSED_ST.includes(c.actStatus)).length;
+  const dueAll=dueCust.filter(c=>c.nextVisitAt&&c.nextVisitAt<td&&!CLOSED_ST.includes(c.actStatus)).length;
+  const attH=attAdminView()? await attCard(vsAll.filter(v=>v.createdAt>=s0&&inSec(v.repUid))) : '';
   m.innerHTML=`
   <div class="hello"><h2>أهلاً يا ${esc(S.me.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
   <div class="chips">${PERIODS.map(([k,l])=>`<button class="chip ${p===k?'on':''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
@@ -846,9 +923,9 @@ async function adminHome(m){
     <div class="st ${dueAll?'warn':''}"><b>${dueAll}</b><span>متابعات متأخرة عند الفريق</span></div>
   </div>
   ${byRes.length?`<div class="card" style="margin-top:10px"><div class="small muted">نتايج الزيارات</div><div class="resbar">${byRes.map(([r,n])=>`<i style="width:${n*100/vs.length}%;background:${RES_COLORS[r]}"></i>`).join('')}</div><div class="legend">${byRes.map(([r,n])=>`<span><i style="background:${RES_COLORS[r]}"></i>${r} ${n}</span>`).join('')}</div></div>`:''}
-  ${attAdminView()?await attCard((await allVisitsSince(startOfDay())).filter(v=>inSec(v.repUid))):''}
-  ${await adminTasksCard()}
-  ${await adminEngCard()}
+  ${attH}
+  ${tasksH}
+  ${engH}
   <div class="sec"><h3>المناديب</h3><span class="cnt">${rs.length}</span></div>
   ${rs.map(r=>{ const rv=vs.filter(v=>v.repUid===r.id); const last=rv[0]; const fl=rv.filter(v=>v.flagged).length; const col=repColor(r.id);
     return `<div class="rep"><div class="top"><div class="avt" style="background:${col}">${esc(initials(r.name))}</div>
@@ -947,7 +1024,7 @@ function svgMap(el,vs,rep){
 }
 
 async function adminAct(m){
-  const cs=(await API.query('customers',[['source','==','old']])).filter(c=>inSec(c.ownerUid)); S._cust=cs;
+  const cs=(await API.query('customers',[['source','==','old']],{swr:true})).filter(c=>inSec(c.ownerUid)); S._cust=cs;
   const rs=reps();
   const per=rs.map(r=>{ const c=cs.filter(x=>x.ownerUid===r.id); const done=c.filter(x=>x.actStatus&&x.actStatus!=='جديد').length; return {r,n:c.length,done,int:c.filter(x=>x.actStatus==='مهتم').length,vis:c.filter(x=>x.actStatus==='تمت الزيارة'||x.visitsCount>0).length}; });
   const un=cs.filter(c=>!c.ownerUid).length;
@@ -964,7 +1041,7 @@ async function adminAct(m){
 }
 
 async function adminTeam(m){
-  S.users=await API.query('users',[],{fresh:true});
+  S.users=await API.query('users',[],{swr:true});
   const rs=reps(); const existing=new Set(rs.map(r=>r.username));
   const pending=curSec()==='rp'?REPS_SEED.filter(r=>!existing.has(r.username)):[];
   m.innerHTML=`<div class="sec" style="margin-top:4px"><h3>مناديب ${esc(secLabel(curSec()))}</h3><span class="cnt">${rs.length}</span></div>
@@ -1163,7 +1240,7 @@ async function engMap(m){
   setTimeout(()=>map.invalidateSize(),200);
 }
 async function adminEngCard(){
-  let l=[]; try{ l=(await API.query('engreq')).filter(r=>(r.section||'rp')===curSec()); }catch(e){}
+  let l=[]; try{ l=(await API.query('engreq',[],{swr:true})).filter(r=>(r.section||'rp')===curSec()); }catch(e){}
   if(!l.length&&!S.users.some(u=>u.role==='eng')) return '';
   const open=l.filter(r=>r.status!=='تم').length, done=l.filter(r=>r.status==='تم'&&r.doneAt&&r.doneAt>=startOfDay()).length;
   return `<button class="it" data-act="openEngAdmin" style="margin-top:10px"><div class="avt" style="background:#4A4E69">${ic('ruler',20)}</div><div class="grow"><b>طلبات المهندس</b><span class="meta">${open} مفتوحة · ${done} خلصت النهارده</span></div></button>`;
@@ -1174,7 +1251,7 @@ async function openEngAdmin(){
 }
 async function repEngCard(uid){
   if(isAdmin()&&!S.viewAs) return '';
-  let l=[]; try{ l=(await API.query('engreq',[['repUid','==',uid]])).filter(r=>r.status!=='تم'||(r.doneAt&&r.doneAt>=Date.now()-3*DAY)); }catch(e){}
+  let l=[]; try{ l=(await API.query('engreq',[['repUid','==',uid]],{swr:true})).filter(r=>r.status!=='تم'||(r.doneAt&&r.doneAt>=Date.now()-3*DAY)); }catch(e){}
   if(!l.length) return '';
   return `<div class="sec"><h3>طلبات المهندس</h3><span class="cnt">${l.length}</span></div>${l.map(r=>engItem(r,{})).join('')}`;
 }
@@ -1209,7 +1286,7 @@ function sheet(title,body,foot,opts={}){
   requestAnimationFrame(()=>ov.classList.add('show'));
   return ov;
 }
-function closeSheet(now){ const ov=$('#ov'); if(!ov) return; document.body.style.overflow=''; if(now){ ov.remove(); return; } ov.classList.remove('show'); setTimeout(()=>ov.remove(),200); }
+function closeSheet(now){ const ov=$('#ov'); if(!ov) return; if(S._staleUI) setTimeout(softRefresh,250); document.body.style.overflow=''; if(now){ ov.remove(); return; } ov.classList.remove('show'); setTimeout(()=>ov.remove(),200); }
 
 /* ---- تسجيل زيارة ---- */
 async function openNewVisit(prefillId){
@@ -1632,7 +1709,7 @@ async function saveTask(btn){
     closeSheet(); toast('اتبعتت المهمة لـ '+(rep?rep.name:''));
   }catch(e){ toast('مقدرش أحفظ: '+(e.message||e)); btn.disabled=false; }
 }
-async function tasksFor(uid){ return (await API.query('tasks',[['repUid','==',uid]])).sort(taskSort); }
+async function tasksFor(uid){ return (await API.query('tasks',[['repUid','==',uid]],{swr:true})).sort(taskSort); }
 function taskSort(a,b){ if(a.status!==b.status) return a.status==='open'?-1:1; if(a.status==='open') return (a.due||'9')<(b.due||'9')?-1:1; return (b.doneAt||0)-(a.doneAt||0); }
 function taskItem(t,opts={}){
   const late=t.status==='open'&&t.due&&t.due<today(), due=t.status==='open'&&t.due&&t.due<=today();
@@ -1752,7 +1829,7 @@ async function silentPushRefresh(){
 /* ---------- المتصلين ---------- */
 let _hb=null;
 function startHeartbeat(){
-  const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()}).catch(()=>{}); refreshBell(); if(isAdmin()) refreshOnline(); };
+  const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()},{keep:true}).catch(()=>{}); /* keep: ما يمسحش البيانات المحفوظة كل دقيقة */ refreshBell(); if(isAdmin()) refreshOnline(); };
   clearInterval(_hb); beat(); _hb=setInterval(beat,60000);
   if(!startHeartbeat._on){ startHeartbeat._on=true; document.addEventListener('visibilitychange',()=>{ if(!document.hidden) beat(); }); }
 }
@@ -1776,7 +1853,7 @@ function handleDeepLink(){
 }
 
 async function adminTasksCard(){
-  let ts=[]; try{ ts=(await API.query('tasks')).filter(t=>inSec(t.repUid)); }catch(e){}
+  let ts=[]; try{ ts=(await API.query('tasks',[],{swr:true})).filter(t=>inSec(t.repUid)); }catch(e){}
   const open=ts.filter(t=>t.status==='open'), late=open.filter(t=>t.due&&t.due<today()), done=ts.filter(t=>t.status==='done'&&t.doneAt&&t.doneAt>=startOfDay());
   return `<button class="it" data-act="openTasks" style="margin-top:12px"><div class="avt" style="background:var(--gold)">${ic('pinpaper',20)}</div><div class="grow"><b>المهام</b><span class="meta">${open.length} مفتوحة${late.length?` · <span style="color:var(--red)">${late.length} متأخرة</span>`:''} · ${done.length} خلصت النهارده</span></div></button>`;
 }
@@ -1813,7 +1890,7 @@ const attAdminView = () => !!(S.me && S.me.role==='admin' && !S.viewAs);
 const attTestView = () => !!(S.me && S.me.username==='mahmoud' && !S.viewAs);   // حساب التجربة لمحمود بس
 const attOn = u => !!(u && u.role==='rep' && u.attendance!==false && u.active!==false);
 const attId = (uid,day) => uid+'_'+day;
-async function attGet(uid,day){ try{ return await API.get('attendance',attId(uid,day)); }catch(e){ return null; } }
+async function attGet(uid,day,opt){ try{ return await API.get('attendance',attId(uid,day),opt); }catch(e){ return null; } }
 function attPts(a){ return (a&&a.points||[]).slice().sort((x,y)=>x.t-y.t); }
 function attOut(a){
   if(!a||!a.inAt) return null;
@@ -1876,7 +1953,8 @@ async function mkTestRep(btn){
 async function attCard(vsToday){
   if(!attAdminView()) return '';
   const us=S.users.filter(u=>attOn(u)&&(!u.test||attTestView())&&(u.test?curSec()==='rp':secOf(u)===curSec())); if(!us.length) return '';
-  const rows=await Promise.all(us.map(async u=>({u,a:await attGet(u.id,today())})));
+  let al=null; try{ al=await API.query('attendance',[['day','==',today()]],{swr:true}); }catch(e){}
+  const rows=al? us.map(u=>({u,a:al.find(x=>x.id===attId(u.id,today()))||null})) : await Promise.all(us.map(async u=>({u,a:await attGet(u.id,today())})));
   const ord=x=>!x.a?2:attOut(x.a)?1:0; rows.sort((x,y)=>ord(x)-ord(y));
   return `<div class="sec"><h3>حضور النهارده</h3></div><div class="card attc">${rows.map(({u,a})=>{
     const o=attOut(a), nv=vsToday.filter(v=>v.repUid===u.id).length;
@@ -2016,7 +2094,20 @@ let qT; document.addEventListener('input',e=>{ if(e.target.id==='q'){ clearTimeo
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.target.id==='lp'||e.target.id==='lu')){ const b=document.querySelector('[data-act="login"]'); b&&b.click(); } });
 /* رجوع من الخلفية: تحديث النسخة لو فيه جديدة + إعادة الاتصال + بيانات جديدة */
 async function newBuild(){
-  try{ const t=await fetch(location.pathname+'?b='+Date.now(),{cache:'no-store'}).then(r=>r.text()); const m=/const BUILD = '([^']+)'/.exec(t); return m&&m[1]!==BUILD?m[1]:null; }catch(e){ return null; }
+  // ملف صغير (version.json) بدل ما نحمّل التطبيق كله (230 KB) عشان نعرف لو فيه نسخة جديدة
+  try{ const j=await fetch(location.pathname.replace(/[^/]*$/,'')+'version.json?b='+Date.now(),{cache:'no-store'}).then(r=>r.json()); return j&&j.b&&j.b!==BUILD?j.b:null; }catch(e){ return null; }
+}
+/* بعد ما الرئيسية تفتح: نجهّز بيانات باقي التابات في الخلفية عشان التنقل يبقى فوري */
+function prefetchTabs(){
+  if(API.mode!=='live') return;
+  setTimeout(()=>{ if(!S.me) return;
+    const asRep=!isAdmin()||S.viewAs;
+    if(isEng()) return;
+    if(asRep){ const uid=subjectUid(); visitsOf(uid).catch(()=>{}); customersOf(uid).catch(()=>{}); return; }
+    allVisitsSince(periodRange('week')[0]).catch(()=>{});
+    allVisitsSince(startOfDay()).catch(()=>{});
+    API.query('customers',[['source','==','old']],{swr:true}).catch(()=>{});
+  },1500);
 }
 let _resuming=false;
 async function onResume(){
@@ -2026,7 +2117,7 @@ async function onResume(){
     if(away>20000 && !$('#ov') && await newBuild()){ hardReload(); return; }
     if(S.me && away>20000){
       if(API.reconnect) await API.reconnect();
-      API.clearCache();
+      if(API.staleAll) API.staleAll(); else API.clearCache();   // الشاشة تفضل زي ما هي وتتحدث في الخلفية
       if(!$('#ov')) await renderTab();
     }
   } finally { _resuming=false; }
