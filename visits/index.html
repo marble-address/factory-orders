@@ -240,6 +240,11 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 #map{height:58vh;border-radius:18px;overflow:hidden;box-shadow:var(--sh);border:1px solid var(--line);background:#E8E4D8}
 .pinmk{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:grid;place-items:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .pinmk span{transform:rotate(45deg);color:#fff;font-size:11px;font-weight:600;font-family:Arial}
+.livemk{position:absolute;left:0;top:0;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:auto}
+.livemk i{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35)}
+.livemk span{background:#fff;border-radius:8px;padding:2px 7px;font-size:11.5px;line-height:1.35;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.2);text-align:center;color:#1D2A23}
+.livemk small{display:block;font-size:10px;color:#6B776F}
+.livemk.old i{opacity:.55}
 .tl{position:relative;padding-inline-start:22px}
 .tl::before{content:"";position:absolute;inset-inline-start:8px;top:6px;bottom:6px;width:2px;background:var(--line)}
 .tl .n{position:absolute;inset-inline-start:0;width:18px;height:18px;border-radius:50%;background:var(--g);color:#fff;font-size:11px;display:grid;place-items:center;font-family:Arial}
@@ -287,7 +292,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r3';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r4';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -966,11 +971,19 @@ async function adminMap(m){
   vs.sort((a,b)=>a.createdAt-b.createdAt);
   const days=[0,-1,-2,-3,-4,-5,-6].map(n=>addDays(n));
   const attX = rep!=='all' ? await attMapPoints(rep,day).catch(()=>null) : null; S._attX=attX;
+  const liveMode = rep==='all' && day===today();
+  S._live = liveMode ? await liveLocs().catch(()=>[]) : null;
+  clearInterval(S._liveT); S._liveT=null;
+  if(liveMode) S._liveT=setInterval(async()=>{
+    if(S.tab!=='map'||S.mapRep!=='all'||S.mapDay!==today()||!S._map){ clearInterval(S._liveT); S._liveT=null; return; }
+    if(document.hidden) return;
+    try{ S._live=await liveLocs(true); drawLive(false); }catch(e){}
+  },60000);
   const repChips=reps().slice(); if(rep!=='all'&&!repChips.find(r=>r.id===rep)&&userById(rep)) repChips.push(userById(rep));
   m.innerHTML=`<div class="chips">${days.map(d=>`<button class="chip ${day===d?'on':''}" data-act="mapDay" data-v="${d}">${d===today()?'اليوم':d===addDays(-1)?'أمس':AR_DAYS[new Date(d+'T12:00').getDay()]}</button>`).join('')}</div>
   <div class="chips" style="margin-top:6px">${[['all','كل المناديب'],...repChips.map(r=>[r.id,r.name])].map(([k,l])=>`<button class="chip ${rep===k?'on':''}" data-act="mapRep" data-v="${k}" ${k!=='all'?`style="${rep===k?`background:${repColor(k)};border-color:${repColor(k)}`:`border-color:${repColor(k)}55`}"`:''}>${esc(l)}</button>`).join('')}</div>
   <div id="map" style="margin-top:10px"></div>
-  <div class="small muted" style="margin:8px 4px">${rep==='all'?'اختار مندوب عشان تشوف خط سيره بالترتيب':'الخط بيوصل زياراته بالترتيب حسب وقت التسجيل'}</div>
+  <div class="small muted" style="margin:8px 4px">${liveMode?`النقط = مكان كل مندوب دلوقتي (آخر موقع اتسجل النهارده) · بتتحدث كل دقيقة · دوس على المندوب عشان خط سيره${S._live&&S._live.length<reps().length?` · ${reps().length-S._live.length} مفيش لهم موقع النهارده`:''}`:rep==='all'?'اختار مندوب عشان تشوف خط سيره بالترتيب':'الخط بيوصل زياراته بالترتيب حسب وقت التسجيل'}</div>
   ${attX?attTimeline(attX,vs):''}
   ${rep!=='all'&&vs.length?routeTimeline(vs): vs.length? `<div class="sec"><h3>${vs.length} زيارة</h3></div>`+vs.slice().reverse().map(v=>visitItem(v,true)).join('') : `<div class="card empty">${ic('map',30)}مفيش زيارات في اليوم ده</div>`}`;
   drawMap(vs,rep);
@@ -1005,8 +1018,35 @@ async function drawMap(vs,rep){
     ax.ps.forEach(p=>pts.push([p.lat,p.lng]));
   }
   if(rep!=='all'&&line.length>1) L.polyline(line,{color:repColor(rep),weight:3,opacity:.75,dashArray:'6 6'}).addTo(map);
+  if(rep==='all'&&S._live&&S._live.length){ drawLive(false); S._live.forEach(x=>pts.push([x.p.lat,x.p.lng])); }
   if(pts.length) map.fitBounds(pts,{padding:[40,40],maxZoom:15});
   setTimeout(()=>map.invalidateSize(),200);
+}
+
+/* مكان كل مندوب دلوقتي: آخر نقطة النهارده من (تتبع الموقع + البصمة + الزيارات) */
+async function liveLocs(fresh){
+  const rs=reps(); if(!rs.length) return [];
+  const d=today(), o=fresh?{fresh:true}:{swr:true};
+  const [tr,at,vs]=await Promise.all([API.query('track',[['day','==',d]],o).catch(()=>[]), API.query('attendance',[['day','==',d]],o).catch(()=>[]), allVisitsSince(startOfDay()).catch(()=>[])]);
+  return rs.map(r=>{
+    let best=null; const take=p=>{ if(p&&p.lat&&p.lng&&p.t&&(!best||p.t>best.t)) best=p; };
+    const t=tr.find(x=>x.uid===r.id); if(t) (t.points||[]).forEach(take);
+    const a=at.find(x=>x.uid===r.id); if(a){ attPts(a).forEach(take); if(a.inLoc) take({...a.inLoc,t:a.inAt}); }
+    vs.forEach(v=>{ if(v.repUid===r.id) take({t:v.createdAt,lat:v.lat,lng:v.lng}); });
+    return best?{r,p:best}:null;
+  }).filter(Boolean);
+}
+function drawLive(){
+  const map=S._map; if(!map||!window.L) return;
+  if(S._liveLayer){ S._liveLayer.remove(); S._liveLayer=null; }
+  if(!S._live||!S._live.length) return;
+  const g=L.layerGroup().addTo(map); S._liveLayer=g;
+  S._live.forEach(({r,p})=>{
+    const col=repColor(r.id), old=Date.now()-p.t>15*60*1000;
+    const mk=L.marker([p.lat,p.lng],{zIndexOffset:1000,icon:L.divIcon({className:'',iconSize:[0,0],iconAnchor:[0,0],
+      html:`<div class="livemk ${old?'old':''}"><i style="background:${col}"></i><span>${esc(r.name)}<small>${ago(p.t)}</small></span></div>`})}).addTo(g);
+    mk.bindPopup(`<div style="direction:rtl;text-align:right;font-family:inherit"><b>${esc(r.name)}</b><br>آخر موقع ${fTime(p.t)} · ${ago(p.t)}<br><button data-act="mapRep" data-v="${r.id}" style="margin-top:6px;color:#065A36;text-decoration:underline">خط سيره النهارده</button></div>`);
+  });
 }
 
 function svgMap(el,vs,rep){
