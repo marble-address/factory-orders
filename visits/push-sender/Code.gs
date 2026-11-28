@@ -26,7 +26,8 @@ function sendPending() {
     docs.forEach(function (d) {
       var f = d.fields || {}, to = val_(f.toUid), id = d.name.split('/').pop();
       if (!users) users = loadUsers_();
-      var targets = to === 'ADMINS' ? users.filter(function (u) { return u.role === 'admin'; }) : users.filter(function (u) { return u.id === to; });
+      var nsec = val_(f.section) || 'rp';   // «ADMINS» = المديرين العامين + مدير القسم بتاع الإشعار بس
+      var targets = to === 'ADMINS' ? users.filter(function (u) { return u.role === 'admin' && (!u.section || u.section === 'all' || u.section === nsec); }) : users.filter(function (u) { return u.id === to; });
       var link = APP_URL + (val_(f.customerId) ? '?c=' + encodeURIComponent(val_(f.customerId)) : '');
       targets.forEach(function (u) {
         (u.tokens || []).forEach(function (tok) {
@@ -49,7 +50,7 @@ function loadUsers_() {
     (r.documents || []).forEach(function (d) {
       var f = d.fields || {};
       var toks = ((f.fcmTokens && f.fcmTokens.arrayValue && f.fcmTokens.arrayValue.values) || []).map(function (v) { return v.stringValue; });
-      out.push({ id: d.name.split('/').pop(), role: val_(f.role), tokens: toks, name: val_(f.name) || '',
+      out.push({ id: d.name.split('/').pop(), role: val_(f.role), section: val_(f.section), tokens: toks, name: val_(f.name) || '',
         active: f.active ? f.active.booleanValue : true, attendance: f.attendance ? f.attendance.booleanValue : true, test: !!(f.test && f.test.booleanValue), seen: !!f.lastSeen });
     });
     token = r.nextPageToken || '';
@@ -111,14 +112,16 @@ function attendanceReminders() {
   if (hour >= 8 && hour < 12 && props.getProperty('att8') !== day) {
     var miss = missingReps_(day);
     miss.forEach(function (u) {
-      addNotif_(u.id, 'صباح الخير يا ' + u.name.split(' ')[0] + ' 👋', 'متنساش تعمل بصمة الحضور: افتح التطبيق ودوس «بصمة»');
+      addNotif_(u.id, 'صباح الخير يا ' + u.name.split(' ')[0] + ' 👋', 'متنساش تعمل بصمة الحضور: افتح التطبيق ودوس «بصمة»', (u.section && u.section !== 'all') ? u.section : 'rp');
     });
     props.setProperty('att8', day); out.push('8: ' + miss.length);
   }
   if (hour >= 9 && hour < 12 && props.getProperty('att9') !== day) {
-    var miss9 = missingReps_(day);
-    if (miss9.length) addNotif_('ADMINS', 'لسه ما بصمش: ' + miss9.length + ' مندوب',
-      miss9.map(function (u) { return u.name; }).join('، '));
+    var miss9 = missingReps_(day), bySec = {};
+    miss9.forEach(function (u) { var s = (u.section && u.section !== 'all') ? u.section : 'rp'; (bySec[s] = bySec[s] || []).push(u); });
+    Object.keys(bySec).forEach(function (s) {   // إشعار لكل قسم لوحده (مدير القسم يشوف مناديبه بس)
+      addNotif_('ADMINS', 'لسه ما بصمش: ' + bySec[s].length + ' مندوب', bySec[s].map(function (u) { return u.name; }).join('، '), s);
+    });
     props.setProperty('att9', day); out.push('9: ' + miss9.length);
   }
   if (out.length) sendPending();
@@ -134,11 +137,11 @@ function missingReps_(day) {
   });
 }
 
-function addNotif_(toUid, title, body) {
+function addNotif_(toUid, title, body, section) {
   api_('post', FS + '/notifs', { fields: {
     toUid: { stringValue: toUid }, fromUid: { stringValue: 'SYSTEM' }, fromName: { stringValue: 'قسم المشاريع' },
     title: { stringValue: title }, body: { stringValue: String(body).slice(0, 240) }, kind: { stringValue: 'att' },
-    read: { booleanValue: false }, pushed: { booleanValue: false }, createdAt: { timestampValue: new Date().toISOString() } } });
+    section: { stringValue: section || 'rp' }, read: { booleanValue: false }, pushed: { booleanValue: false }, createdAt: { timestampValue: new Date().toISOString() } } });
 }
 
 /* شغّلها مرة واحدة: مشغّل كل ربع ساعة لتذكيرات البصمة */
