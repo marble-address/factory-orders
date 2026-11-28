@@ -1,6 +1,6 @@
 rules_version = '2';
 // قواعد حماية تطبيق «الزيارات الميدانية» — مشروع marble-visits
-// المدير (role: admin) يشوف ويعدّل كل حاجة. المندوب (role: rep) يشوف ويضيف بياناته هو بس.
+// المدير العام (role: admin من غير قسم) يشوف ويعدّل كل حاجة، ومدير القسم قسمه بس. المندوب (role: rep) يشوف ويضيف بياناته هو بس.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,17 +12,27 @@ service cloud.firestore {
     function isRep() { return isUser() && me().role == 'rep'; }
     function isEng() { return isUser() && me().role == 'eng'; }
     function mine(d) { return d.repUid == request.auth.uid; }
+    // الأقسام: المدير العام (من غير قسم أو «all») يشوف كل حاجة — مدير القسم (section = rw مثلًا) يشوف قسمه بس
+    function mySec() { return me().get('section', ''); }
+    function isTop() { return isAdmin() && (mySec() == '' || mySec() == 'all'); }
+    function isSecAdm() { return isAdmin() && !(mySec() == '' || mySec() == 'all'); }
+    function inSec(d) { return d.get('section', 'rp') == mySec(); }
+    function secRead() { return isSecAdm() && inSec(resource.data); }
+    function secNew() { return isSecAdm() && inSec(request.resource.data); }
+    function secEdit() { return isSecAdm() && inSec(resource.data) && inSec(request.resource.data); }
 
     // المستخدمين
     match /users/{uid} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid)
+      allow read: if isTop() || secRead() || (signedIn() && request.auth.uid == uid)
                   || (isUser() && resource.data.role == 'eng');   // المناديب يعرفوا مين المهندس عشان يبعتوله
       // المدير بيضيف المناديب — وحساب المدير نفسه بيتعمل مرة واحدة من شاشة الدخول
-      allow create: if (isAdmin() && request.resource.data.role in ['rep', 'admin', 'eng'])
+      allow create: if (isTop() && request.resource.data.role in ['rep', 'admin', 'eng'])
+                    || (secNew() && request.resource.data.role == 'rep')
                     || (signedIn() && request.auth.uid == uid
                         && request.auth.token.email == 'mahmoud@marble-visits.app'
                         && request.resource.data.role == 'admin');
-      allow update: if isAdmin()
+      allow update: if isTop()
+                    || (secEdit() && resource.data.role == 'rep' && request.resource.data.role == 'rep')
                     || (signedIn() && request.auth.uid == uid
                         && request.resource.data.diff(resource.data).affectedKeys()
                              .hasOnly(['lastSeen', 'fcmTokens', 'notifOn', 'notifAt', 'mustSetPw'])
@@ -32,44 +42,49 @@ service cloud.firestore {
 
     // العملاء
     match /customers/{id} {
-      allow read: if isAdmin() || (isRep() && resource.data.ownerUid == request.auth.uid);
-      allow create: if isAdmin() || (isRep() && request.resource.data.ownerUid == request.auth.uid);
-      allow update: if isAdmin()
+      allow read: if isTop() || secRead() || (isRep() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isTop() || secNew() || (isRep() && request.resource.data.ownerUid == request.auth.uid);
+      allow update: if isTop() || secEdit()
                     || (isRep() && resource.data.ownerUid == request.auth.uid
                         && request.resource.data.ownerUid == request.auth.uid);
-      allow delete: if isAdmin();
+      allow delete: if isTop() || secRead();
     }
 
     // الزيارات والصور والتواصل
     match /visits/{id} {
-      allow read: if isAdmin() || (isRep() && mine(resource.data));
-      allow create: if isAdmin() || (isRep() && mine(request.resource.data));
-      allow update, delete: if isAdmin();
+      allow read: if isTop() || secRead() || (isRep() && mine(resource.data));
+      allow create: if isTop() || secNew() || (isRep() && mine(request.resource.data));
+      allow update: if isTop() || secEdit();
+      allow delete: if isTop() || secRead();
     }
     match /photos/{id} {
-      allow read: if isAdmin() || (isRep() && mine(resource.data));
-      allow create: if isAdmin() || (isRep() && mine(request.resource.data));
-      allow update, delete: if isAdmin();
+      allow read: if isTop() || secRead() || (isRep() && mine(resource.data));
+      allow create: if isTop() || secNew() || (isRep() && mine(request.resource.data));
+      allow update: if isTop() || secEdit();
+      allow delete: if isTop() || secRead();
     }
     match /contacts/{id} {
-      allow read: if isAdmin() || (isRep() && mine(resource.data));
-      allow create: if isAdmin() || (isRep() && mine(request.resource.data));
-      allow update, delete: if isAdmin();
+      allow read: if isTop() || secRead() || (isRep() && mine(resource.data));
+      allow create: if isTop() || secNew() || (isRep() && mine(request.resource.data));
+      allow update: if isTop() || secEdit();
+      allow delete: if isTop() || secRead();
     }
 
     // التعليقات على العميل (بين المدير والمندوب)
     match /comments/{id} {
-      allow read: if isAdmin() || (isRep() && resource.data.ownerUid == request.auth.uid);
+      allow read: if isTop() || secRead() || (isRep() && resource.data.ownerUid == request.auth.uid);
       allow create: if request.resource.data.authorUid == request.auth.uid
-                    && (isAdmin() || (isRep() && request.resource.data.ownerUid == request.auth.uid));
-      allow update, delete: if isAdmin();
+                    && (isTop() || secNew() || (isRep() && request.resource.data.ownerUid == request.auth.uid));
+      allow update: if isTop() || secEdit();
+      allow delete: if isTop() || secRead();
     }
 
     // المهام: المدير بيعملها، والمندوب بيقفلها بس
     match /tasks/{id} {
-      allow read: if isAdmin() || (isRep() && mine(resource.data));
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
+      allow read: if isTop() || secRead() || (isRep() && mine(resource.data));
+      allow create: if isTop() || secNew();
+      allow delete: if isTop() || secRead();
+      allow update: if isTop() || secEdit()
                     || (isRep() && mine(resource.data)
                         && request.resource.data.diff(resource.data).affectedKeys()
                              .hasOnly(['status', 'result', 'doneAt']));
@@ -77,36 +92,39 @@ service cloud.firestore {
 
     // الإشعارات (الجرس) — وهي نفسها طابور إشعارات الموبايل
     match /notifs/{id} {
-      allow read: if isAdmin() || (isUser() && resource.data.toUid == request.auth.uid);
+      allow read: if isTop() || (isUser() && resource.data.toUid == request.auth.uid)
+                  || (secRead() && resource.data.toUid == 'ADMINS');
       allow create: if isUser() && request.resource.data.fromUid == request.auth.uid
                     && request.resource.data.pushed == false;
-      allow update: if isAdmin()
+      allow update: if isTop()
+                    || (secEdit() && resource.data.toUid == 'ADMINS'
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']))
                     || (isUser() && resource.data.toUid == request.auth.uid
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
-      allow delete: if isAdmin();
+      allow delete: if isTop();
     }
 
     // بصمة الحضور: مستند لكل مندوب في اليوم (uid_day)
     match /attendance/{id} {
-      allow read: if isAdmin() || (isUser() && resource.data.uid == request.auth.uid);
-      allow create: if isAdmin() || (isRep() && request.resource.data.uid == request.auth.uid
+      allow read: if isTop() || secRead() || (isUser() && resource.data.uid == request.auth.uid);
+      allow create: if isTop() || secNew() || (isRep() && request.resource.data.uid == request.auth.uid
                                      && id == request.auth.uid + '_' + request.resource.data.day);
-      allow update: if isAdmin()
+      allow update: if isTop() || secEdit()
                     || (isRep() && resource.data.uid == request.auth.uid
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'outAt', 'outLoc']));
-      allow delete: if isAdmin();
+      allow delete: if isTop();
     }
 
     // طلبات زيارة المهندس: المندوب بيطلب، المهندس بيحدد ميعاد ويقفل، والاتنين بيتكلموا في المحادثة
     match /engreq/{id} {
-      allow read: if isAdmin() || isEng() || (isRep() && resource.data.repUid == request.auth.uid);
-      allow create: if isAdmin() || (isRep() && request.resource.data.repUid == request.auth.uid);
-      allow update: if isAdmin()
+      allow read: if isTop() || secRead() || isEng() || (isRep() && resource.data.repUid == request.auth.uid);
+      allow create: if isTop() || secNew() || (isRep() && request.resource.data.repUid == request.auth.uid);
+      allow update: if isTop() || secEdit()
                     || (isEng() && request.resource.data.diff(resource.data).affectedKeys()
                          .hasOnly(['status', 'due', 'result', 'photos', 'thread', 'doneAt', 'doneBy', 'engUid']))
                     || (isRep() && resource.data.repUid == request.auth.uid
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['thread']));
-      allow delete: if isAdmin();
+      allow delete: if isTop() || secRead();
     }
 
     // أي حاجة تانية مقفولة

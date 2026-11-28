@@ -281,7 +281,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-26-r3';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r1';   // غيّرها مع كل نشر — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -461,7 +461,17 @@ function liveAPI(){
       const once=()=>TO(fs.collection(col).doc(id).get(),12000);
       try{ let d; try{ d=await once(); }catch(e){ if(!/اتأخر/.test(e.message)) throw e; await this.reconnect(); d=await once(); }
         return d.exists?fromDoc(d):null; }catch(e){ guard(e); } },
+    // مدير القسم (العزوني): كل استعلام بيتقفل على قسمه (section==قسمه) — والقواعد في Firebase بتمنع أي حاجة غير كده
     async query(col,filters=[],opt={}){
+      if(!isSecAdm() || !SEC_Q.includes(col)) return this._q(col,filters,opt);
+      const sec=S.me.section;
+      if(col==='users' && filters.some(f=>f[0]==='role'&&f[2]==='eng')) return this._q(col,filters,opt);
+      if(col==='notifs'){ const [a,b]=await Promise.all([this._q(col,[['toUid','==',S.me.id]],opt),this._q(col,[['toUid','==',ADMINS],['section','==',sec]],opt)]); return a.concat(b); }
+      const EQ=['==','in','array-contains'], server=filters.filter(f=>EQ.includes(f[1])).concat([['section','==',sec]]), local=filters.filter(f=>!EQ.includes(f[1]));
+      const v=await this._q(col,server,opt);
+      return local.length? v.filter(o=>local.every(([f,op,x])=> op==='>='?o[f]>=x : op==='<='?o[f]<=x : op==='>'?o[f]>x : op==='<'?o[f]<x : true)) : v;
+    },
+    async _q(col,filters=[],opt={}){
       const k=qkey(col,filters), hit=QC.get(k);
       if(!opt.fresh && hit && Date.now()-hit.t<QTTL) return hit.v.slice();
       let q=fs.collection(col);
@@ -475,9 +485,9 @@ function liveAPI(){
     clearCache(col){ if(col) dropCol(col); else QC.clear(); },
     async reconnect(){ try{ await TO(fs.disableNetwork(),3000); }catch(e){} try{ await TO(fs.enableNetwork(),5000); }catch(e){} },
     async arrayAdd(col,id,field,val){ dropCol(col); await settle(fs.collection(col).doc(id).update({[field]:firebase.firestore.FieldValue.arrayUnion(val)})); },
-    async add(col,data,id){ dropCol(col); const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); dropCol(col); return {id:ref.id,saved}; },
+    async add(col,data,id){ data=withSec(col,data); dropCol(col); const ref=id?fs.collection(col).doc(id):fs.collection(col).doc(); const saved=await settle(ref.set(toData(data))); dropCol(col); return {id:ref.id,saved}; },
     async update(col,id,patch){ dropCol(col); const saved=await settle(fs.collection(col).doc(id).update(toData(patch))); dropCol(col); return {saved}; },
-    async batchAdd(col,rows){ dropCol(col); for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } dropCol(col); },
+    async batchAdd(col,rows){ rows=rows.map(r=>withSec(col,r)); dropCol(col); for(let i=0;i<rows.length;i+=400){ const b=fs.batch(); rows.slice(i,i+400).forEach(r=>b.set(fs.collection(col).doc(),toData(r))); await b.commit(); } dropCol(col); },
     async remove(col,id){ dropCol(col); await fs.collection(col).doc(id).delete(); dropCol(col); },
     async addToken(uid,tok){ await fs.collection('users').doc(uid).update({fcmTokens:firebase.firestore.FieldValue.arrayUnion(tok),notifOn:true,notifAt:Date.now()}); }
   };
@@ -560,6 +570,11 @@ const S = { sec:(()=>{ try{ return localStorage.getItem('ma_sec')||'rp'; }catch(
 const isAdmin = () => S.me && S.me.role==='admin';
 const isEng = () => S.me && S.me.role==='eng';
 const isTop = () => isAdmin() && (!S.me.section || S.me.section==='all');   // محمود وأحمد كامل: كل الأقسام
+const isSecAdm = () => isAdmin() && !isTop();   // مدير قسم (زي العزوني): قسمه بس
+// كل مستند بيتكتب عليه القسم بتاعه (قسم المندوب صاحب العميل/الزيارة)، عشان مدير القسم يشوف قسمه بس
+const SEC_COLS = ['customers','visits','photos','contacts','comments','tasks','notifs','attendance','engreq'], SEC_Q = SEC_COLS.concat(['users']);
+function secFor(d){ for(const k of ['ownerUid','repUid','uid','toUid','fromUid']){ const id=d[k]; if(!id) continue; const u=userById(id)||(S.me&&S.me.id===id?S.me:null); if(u&&u.role==='rep') return secOf(u); } return curSec(); }
+function withSec(col,d){ return (SEC_COLS.includes(col) && d && !d.section) ? {...d,section:secFor(d)} : d; }
 function curSec(){
   if(S.viewAs) return secOf(S.viewAs);
   if(isAdmin()) return isTop() ? (S.sec||'rp') : S.me.section;
@@ -752,11 +767,11 @@ async function repCustomers(m){
   const uid=subjectUid(); const cs=await customersOf(uid); S._cust=cs;
   const q=(S.q||'').trim();
   const f=S.filt.rc||'all';
-  let list=cs.filter(c=>f==='all'||(f==='field'&&c.source!=='old')||(f==='old'&&c.source==='old')||(f==='due'&&c.nextVisitAt&&c.nextVisitAt<=today()));
+  let list=cs.filter(c=>f==='all'||(f==='field'&&c.source!=='old'&&c.source!=='active')||(f==='old'&&c.source==='old')||(f==='active'&&c.source==='active')||(f==='due'&&c.nextVisitAt&&c.nextVisitAt<=today()));
   if(q) list=list.filter(c=>custMatch(c,q));
   list.sort((a,b)=>(b.lastVisitAt||b.createdAt||0)-(a.lastVisitAt||a.createdAt||0));
   m.innerHTML=`<div class="srch"><span>${ic('search',18)}</span><input class="inp" id="q" placeholder="ابحث باسم العميل أو الجوال" value="${esc(q)}"></div>
-  <div class="chips" style="margin-top:10px">${[['all','الكل'],['field','عملاء الزيارات'],['old','الداتا القديمة'],['due','متابعة مستحقة']].map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="setF" data-k="rc" data-v="${k}">${l}</button>`).join('')}</div>
+  <div class="chips" style="margin-top:10px">${[['all','الكل'],['field','عملاء الزيارات'],['old','الداتا القديمة']].concat(cs.some(c=>c.source==='active')?[['active','عملاء نشطين']]:[]).concat([['due','متابعة مستحقة']]).map(([k,l])=>`<button class="chip ${f===k?'on':''}" data-act="setF" data-k="rc" data-v="${k}">${l}</button>`).join('')}</div>
   <div class="sec"><h3>${list.length} عميل</h3></div>
   ${list.length? list.slice(0,150).map(c=>custItem(c)).join('') : `<div class="card empty">${ic('building',30)}مفيش عملاء</div>`}`;
 }
@@ -811,7 +826,7 @@ async function adminHome(m){
   const vs=(await allVisitsSince(a===0?0:a)).filter(v=>v.createdAt<b&&inSec(v.repUid));
   const custs=(await API.query('customers')).filter(c=>inSec(c.ownerUid));
   S._allCust=custs;
-  const newC=custs.filter(c=>c.source!=='old'&&c.createdAt>=a&&c.createdAt<b).length;
+  const newC=custs.filter(c=>c.source!=='old'&&c.source!=='active'&&c.createdAt>=a&&c.createdAt<b).length;
   const flagged=vs.filter(v=>v.flagged).length;
   const quotes=vs.filter(v=>v.result==='طلب عرض سعر').length, sold=vs.filter(v=>v.result==='تم البيع').length;
   const rs=reps(); const maxV=Math.max(1,...rs.map(r=>vs.filter(v=>v.repUid===r.id).length));
@@ -1995,7 +2010,7 @@ document.addEventListener('change',async e=>{
   if(k==='rep'||k==='res'){ S.filt[k]=t.value; renderTab(); }
   else if(k==='actRep'){ S.actRep=t.value; renderTab(); }
   else if(k==='taskRep'){ S.taskRep=t.value; openTasksAdmin(); }
-  else if(k==='moveCust'){ if(!isAdmin()) return; try{ await API.update('customers',t.dataset.id,{ownerUid:t.value}); }catch(e){ toast('ما اتنقلش، جرب تاني',4500); return; } try{ const cm=await API.query('comments',[['customerId','==',t.dataset.id]]); await Promise.all(cm.map(x=>API.update('comments',x.id,{ownerUid:t.value}))); }catch(e){} const c=(S._cust||[]).concat(S._allCust||[]).find(x=>x.id===t.dataset.id); if(c) c.ownerUid=t.value; toast('اتنقل العميل'); }
+  else if(k==='moveCust'){ if(!isAdmin()) return; try{ await API.update('customers',t.dataset.id,{ownerUid:t.value,section:secOf(userById(t.value))}); }catch(e){ toast('ما اتنقلش، جرب تاني',4500); return; } try{ const cm=await API.query('comments',[['customerId','==',t.dataset.id]]); await Promise.all(cm.map(x=>API.update('comments',x.id,{ownerUid:t.value,section:secOf(userById(t.value))}))); }catch(e){} const c=(S._cust||[]).concat(S._allCust||[]).find(x=>x.id===t.dataset.id); if(c) c.ownerUid=t.value; toast('اتنقل العميل'); }
 });
 let qT; document.addEventListener('input',e=>{ if(e.target.id==='q'){ clearTimeout(qT); const v=e.target.value; qT=setTimeout(()=>{ S.q=v; const pos=e.target.selectionStart; renderTab().then(()=>{ const q=$('#q'); if(q){ q.focus(); try{q.setSelectionRange(pos,pos);}catch(_){} } }); },300); } });
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.target.id==='lp'||e.target.id==='lu')){ const b=document.querySelector('[data-act="login"]'); b&&b.click(); } });
