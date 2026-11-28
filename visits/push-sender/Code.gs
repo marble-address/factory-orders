@@ -12,7 +12,7 @@ function doGet() {
   return ContentService.createTextOutput('ok ' + n);
 }
 
-function sendPending() {
+function sendPendingFs_() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return 0;
   try {
@@ -38,6 +38,44 @@ function sendPending() {
       });
       api_('patch', FS + '/notifs/' + id + '?updateMask.fieldPaths=pushed&updateMask.fieldPaths=pushedAt',
         { fields: { pushed: { booleanValue: true }, pushedAt: { integerValue: String(Date.now()) } } });
+    });
+    return sent;
+  } finally { lock.releaseLock(); }
+}
+
+
+/* ===== Supabase (من 28 نوفمبر): البيانات هناك، وFirestore فاضل احتياطي لحد التحويل الكامل =====
+   كلمة السر في خصائص السكربت: SB_SECRET (نفس قيمة app_secrets k='push' في Supabase) */
+var SB_URL = 'https://lyupqkvueqyybgdqmqdj.supabase.co';
+var SB_KEY = 'sb_publishable_hSp0tj9Xbfc4n71RQNQv_A__aOWfT5l';
+function sbSecret_() { return PropertiesService.getScriptProperties().getProperty('SB_SECRET'); }
+function sb_(fn, body) {
+  body = body || {}; body.p_secret = sbSecret_();
+  var r = UrlFetchApp.fetch(SB_URL + '/rest/v1/rpc/' + fn, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, payload: JSON.stringify(body) });
+  var t = r.getContentText();
+  if (r.getResponseCode() >= 300) throw new Error('sb ' + fn + ' → ' + r.getResponseCode() + ' ' + t.slice(0, 300));
+  return t ? JSON.parse(t) : null;
+}
+
+function sendPending() {
+  var n = 0;
+  try { n += sendPendingSb_(); } catch (e) { console.log(e); }
+  try { n += sendPendingFs_(); } catch (e) { console.log('fs ' + e); }
+  return n;
+}
+function sendPendingSb_() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return 0;
+  try {
+    var sent = 0, list = sb_('push_pending', {}) || [];
+    list.forEach(function (x) {
+      var link = APP_URL + (x.customerId ? '?c=' + encodeURIComponent(x.customerId) : '');
+      (x.tokens || []).forEach(function (tok) {
+        var c = fcm_(tok, x.title || 'قسم المشاريع', x.body || '', link, x.id);
+        if (c < 300) sent++;
+        else if (c === 404 || c === 400) { try { sb_('push_drop_token', { p_token: tok }); } catch (e) { console.log(e); } }
+      });
     });
     return sent;
   } finally { lock.releaseLock(); }
@@ -129,19 +167,17 @@ function attendanceReminders() {
 }
 
 function missingReps_(day) {
-  var users = loadUsers_().filter(function (u) { return u.role === 'rep' && u.active !== false && u.attendance !== false && !u.test && u.seen; });   // اللي دخل التطبيق مرة على الأقل بس
-  return users.filter(function (u) {
-    var r = UrlFetchApp.fetch(FS + '/attendance/' + u.id + '_' + day + '?mask.fieldPaths=inAt', { muteHttpExceptions: true,
-      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'x-goog-user-project': PROJECT } });
-    return r.getResponseCode() === 404;
-  });
+  var users = (sb_('srv_query', { p_col: 'users', p_filters: [] }) || []).filter(function (u) {
+    return u.role === 'rep' && u.active !== false && u.attendance !== false && !u.test && u.lastSeen; });   // اللي دخل التطبيق مرة على الأقل بس
+  var att = sb_('srv_query', { p_col: 'attendance', p_filters: [['day', '==', day]] }) || [], have = {};
+  att.forEach(function (a) { have[a.uid] = true; });
+  return users.filter(function (u) { return !have[u.id]; }).map(function (u) { return { id: u.id, name: u.name || '', section: u.section }; });
 }
 
 function addNotif_(toUid, title, body, section) {
-  api_('post', FS + '/notifs', { fields: {
-    toUid: { stringValue: toUid }, fromUid: { stringValue: 'SYSTEM' }, fromName: { stringValue: 'قسم المشاريع' },
-    title: { stringValue: title }, body: { stringValue: String(body).slice(0, 240) }, kind: { stringValue: 'att' },
-    section: { stringValue: section || 'rp' }, read: { booleanValue: false }, pushed: { booleanValue: false }, createdAt: { timestampValue: new Date().toISOString() } } });
+  sb_('srv_set', { p_col: 'notifs', p_id: null, p_data: {
+    toUid: toUid, fromUid: 'SYSTEM', fromName: 'قسم المشاريع', title: title, body: String(body).slice(0, 240), kind: 'att',
+    section: section || 'rp', read: false, pushed: false, createdAt: '__SV__' } });
 }
 
 /* شغّلها مرة واحدة: مشغّل كل ربع ساعة لتذكيرات البصمة */
@@ -179,12 +215,12 @@ function resetPw_(b) {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'x-goog-user-project': PROJECT },
     payload: JSON.stringify({ localId: b.uid, password: pw }) });
   if (u.getResponseCode() >= 300) return { ok: false, err: 'update ' + u.getResponseCode() + ' ' + u.getContentText().slice(0, 200) };
-  api_('patch', FS + '/users/' + b.uid + '?updateMask.fieldPaths=mustSetPw', { fields: { mustSetPw: { booleanValue: true } } });
+  sb_('srv_update', { p_col: 'users', p_id: b.uid, p_patch: { mustSetPw: true } });
   return { ok: true, username: t.username, password: pw };
 }
 function getUser_(uid) {
-  try { var d = api_('get', FS + '/users/' + uid), f = d.fields || {};
-    return { role: val_(f.role), section: val_(f.section), username: val_(f.username), active: f.active ? f.active.booleanValue : true };
+  try { var u = sb_('srv_get', { p_col: 'users', p_id: uid }); if (!u) return null;
+    return { role: u.role || '', section: u.section || '', username: u.username || '', active: u.active !== false };
   } catch (e) { return null; }
 }
 function genPw_() { var c = 'abcdefghjkmnpqrstuvwxyz23456789', s = ''; for (var i = 0; i < 16; i++) s += c.charAt(Math.floor(Math.random() * c.length)); return s; }

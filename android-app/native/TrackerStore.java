@@ -65,13 +65,15 @@ final class TrackerStore {
 
     /* ---------- HTTP ---------- */
     static final class Resp { int code; String body = ""; }
-    static Resp http(String url, String ctype, String body, String bearer) {
+    static Resp http(String url, String ctype, String body, String bearer) { return http(url, ctype, body, bearer, null); }
+    static Resp http(String url, String ctype, String body, String bearer, String apikey) {
         Resp r = new Resp(); HttpURLConnection h = null;
         try {
             h = (HttpURLConnection) new URL(url).openConnection();
             h.setConnectTimeout(15000); h.setReadTimeout(20000); h.setRequestMethod("POST");
             h.setRequestProperty("Referer", "https://marble-address.github.io/");
             if (bearer != null) h.setRequestProperty("Authorization", "Bearer " + bearer);
+            if (apikey != null) h.setRequestProperty("apikey", apikey);
             h.setDoOutput(true); h.setRequestProperty("Content-Type", ctype);
             try (OutputStream os = h.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
             r.code = h.getResponseCode();
@@ -103,6 +105,12 @@ final class TrackerStore {
         return null;
     }
 
+    /* Supabase (من 28 نوفمبر): لو الصفحة بعتت sbUrl يبقى القراءة والكتابة من هناك */
+    static boolean sb(Context c) { return !sp(c).getString("sbUrl", "").isEmpty(); }
+    static Resp rpc(Context c, String tok, String fn, JSONObject body) {
+        return http(sp(c).getString("sbUrl", "") + "/rest/v1/rpc/" + fn, "application/json", body.toString(), tok, sp(c).getString("sbKey", ""));
+    }
+
     static String base(Context c) { return "projects/" + sp(c).getString("projectId", "marble-visits") + "/databases/(default)/documents"; }
     static JSONObject sv(String v) throws Exception { return new JSONObject().put("stringValue", v); }
 
@@ -121,6 +129,16 @@ final class TrackerStore {
                 String uid = sp(c).getString("uid", "");
                 if (!uid.equals(it.optString("uid"))) { dropFirst(c); continue; }
                 String tok = token(c, false); if (tok == null) break;
+                if (sb(c)) {
+                    JSONObject pt = new JSONObject().put("t", it.getLong("t")).put("lat", it.getDouble("lat")).put("lng", it.getDouble("lng"))
+                            .put("acc", it.optInt("acc")).put("k", it.optString("k", "p"));
+                    Resp sr = rpc(c, tok, "fs_track", new JSONObject().put("p_day", it.getString("day")).put("p_pt", pt)
+                            .put("p_name", sp(c).getString("name", "")).put("p_section", sp(c).getString("section", "rp")));
+                    if (sr.code >= 200 && sr.code < 300) { dropFirst(c); sp(c).edit().putLong("lastSent", System.currentTimeMillis()).apply(); continue; }
+                    if (sr.code == 401) { token(c, true); break; }
+                    if (sr.code == 400 || sr.code == 403) { sp(c).edit().putString("lastErr", "sb " + sr.code + " " + sr.body.substring(0, Math.min(120, sr.body.length()))).apply(); dropFirst(c); continue; }
+                    break;
+                }
                 String name = base(c) + "/track/" + uid + "_" + it.getString("day");
                 JSONObject V = new JSONObject().put("mapValue", new JSONObject().put("fields", new JSONObject()
                         .put("t", new JSONObject().put("integerValue", String.valueOf(it.getLong("t"))))
@@ -162,6 +180,7 @@ final class TrackerStore {
         try {
             String uid = sp(c).getString("uid", null); if (uid == null) return;
             String tok = token(c, false); if (tok == null) return;
+            if (sb(c)) { pollNotifsSb(c, uid, tok); return; }
             JSONArray filters = new JSONArray()
                     .put(new JSONObject().put("fieldFilter", new JSONObject().put("field", new JSONObject().put("fieldPath", "toUid")).put("op", "EQUAL").put("value", sv(uid))))
                     .put(new JSONObject().put("fieldFilter", new JSONObject().put("field", new JSONObject().put("fieldPath", "read")).put("op", "EQUAL").put("value", new JSONObject().put("booleanValue", false))));
@@ -193,11 +212,41 @@ final class TrackerStore {
         } catch (Exception e) { }
     }
 
+    static void pollNotifsSb(Context c, String uid, String tok) {
+        try {
+            JSONArray f = new JSONArray().put(new JSONArray().put("toUid").put("==").put(uid)).put(new JSONArray().put("read").put("==").put(false));
+            Resp r = rpc(c, tok, "fs_query", new JSONObject().put("p_col", "notifs").put("p_filters", f));
+            if (r.code != 200) return;
+            SharedPreferences s = sp(c);
+            boolean fcmOn = !s.getString("fcm", "").isEmpty() && uid.equals(s.getString("fcmUid", ""));
+            boolean first = !uid.equals(s.getString("polledUid", ""));
+            JSONArray shown = new JSONArray(s.getString("shown", "[]"));
+            Set<String> set = new HashSet<>(); for (int i = 0; i < shown.length(); i++) set.add(shown.optString(i));
+            JSONArray arr = new JSONArray(r.body); long now = System.currentTimeMillis();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject d = arr.getJSONObject(i); String id = d.optString("id"); if (id.isEmpty() || set.contains(id)) continue;
+                set.add(id); shown.put(id);
+                long ct = d.optLong("createdAt", 0);
+                if (ct > 0 && now - ct > (first ? 15 * 60000L : 24 * 3600000L)) continue;
+                if (fcmOn) continue;
+                show(c, id, d.optString("title", ""), d.optString("body", ""));
+            }
+            if (shown.length() > 300) { JSONArray t = new JSONArray(); for (int i = shown.length() - 300; i < shown.length(); i++) t.put(shown.get(i)); shown = t; }
+            s.edit().putString("shown", shown.toString()).putString("polledUid", uid).apply();
+        } catch (Exception e) { }
+    }
+
     /* بيضيف توكن FCM بتاع الموبايل ده لحساب المندوب (fcmTokens) عشان الإشعارات توصله */
     static void addFcm(Context c, String fcm) {
         try {
             String uid = sp(c).getString("uid", null); if (uid == null || fcm == null || fcm.isEmpty()) return;
             String tok = token(c, false); if (tok == null) return;
+            if (sb(c)) {
+                Resp sr = rpc(c, tok, "fs_update", new JSONObject().put("p_col", "users").put("p_id", uid).put("p_patch", new JSONObject())
+                        .put("p_union", new JSONObject().put("fcmTokens", new JSONArray().put(fcm))));
+                if (sr.code == 200) sp(c).edit().putString("fcmUid", uid).apply();
+                return;
+            }
             JSONObject w = new JSONObject().put("transform", new JSONObject()
                     .put("document", base(c) + "/users/" + uid)
                     .put("fieldTransforms", new JSONArray().put(new JSONObject().put("fieldPath", "fcmTokens")

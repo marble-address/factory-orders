@@ -279,6 +279,12 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 
 <script>
 /* ================= الإعدادات ================= */
+/* قاعدة البيانات: Supabase (بدل Firestore من 28 نوفمبر) — تسجيل الدخول لسه Firebase Auth
+   ?supa=0 يرجّع الموبايل ده لـ Firestore مؤقتًا، و ?supa=1 يرجّعه لـ Supabase */
+const SUPA_URL = 'https://lyupqkvueqyybgdqmqdj.supabase.co';
+const SUPA_KEY = 'sb_publishable_hSp0tj9Xbfc4n71RQNQv_A__aOWfT5l';
+const SUPA_DEFAULT = false;
+const USE_SUPA = (()=>{ try{ const m=/[?&]supa=([01])/.exec(location.search); if(m) localStorage.setItem('mv_supa',m[1]); const v=localStorage.getItem('mv_supa'); return v===null?SUPA_DEFAULT:v==='1'; }catch(e){ return SUPA_DEFAULT; } })();
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyChKkqG2ZVl5K0OUzcJaLRJxcuBL8wKuKY",
   authDomain: "marble-visits.firebaseapp.com",
@@ -292,7 +298,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r8';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r9';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -468,7 +474,7 @@ function liveAPI(){
   // وفي نفس اللحظة بتتحدث من السيرفر في الخلفية — ولو فيه جديد الشاشة بتتحدث لوحدها (stale-while-revalidate)
   const QC=new Map(), QTTL=60000, GEN={}, INF=new Map();
   const qkey=(col,f)=>col+'|'+JSON.stringify(f);
-  const ukey=k=>((auth.currentUser&&auth.currentUser.uid)||S._cuid||'-')+'|'+k;
+  const ukey=k=>(USE_SUPA?'s|':'')+((auth.currentUser&&auth.currentUser.uid)||S._cuid||'-')+'|'+k;
   const dropCol=col=>{ GEN[col]=(GEN[col]||0)+1; for(const k of [...QC.keys()]) if(k.startsWith(col+'|')) QC.delete(k); IDBC.delPrefix(ukey(col+'|')); };
   const TO=(p,ms,msg)=>Promise.race([p, sleep(ms).then(()=>{ throw new Error(msg||'التحميل اتأخر، اتأكد من النت وحاول تاني'); })]);
   const guard=e=>{ const m=String(e&&e.message||e); if(/terminated|INTERNAL ASSERTION|IndexedDB/i.test(m)) { hardReload(); } throw e; };
@@ -477,7 +483,7 @@ function liveAPI(){
   const toData = o => { const r={}; for(const k in o){ if(k==='id') continue; r[k]= o[k]==='__SV__'?SV():o[k]; } return r; };
   const em = u => u.trim().toLowerCase()+'@'+LOGIN_DOMAIN;
   const settle = (p,ms=5000) => Promise.race([p.then(()=>true), sleep(ms).then(()=>false)]);
-  return {
+  const L = {
     mode:'live',
     onAuth(cb){ auth.onAuthStateChanged(u=>cb(u?{uid:u.uid,email:u.email}:null)); },
     async login(u,p){ await auth.signInWithEmailAndPassword(em(u),p); },
@@ -545,6 +551,51 @@ function liveAPI(){
     async remove(col,id){ dropCol(col); await fs.collection(col).doc(id).delete(); dropCol(col); },
     async addToken(uid,tok){ await fs.collection('users').doc(uid).update({fcmTokens:firebase.firestore.FieldValue.arrayUnion(tok),notifOn:true,notifAt:Date.now()}); }
   };
+  if(!USE_SUPA) return L;
+  /* ---------- Supabase: نفس الواجهة بالظبط، والقراءة والكتابة من دوال fs_* (نفس قواعد الحماية) ---------- */
+  const rpc=async(fn,body,ms=15000)=>{
+    const u=auth.currentUser; if(!u) throw new Error('مش مسجل دخول');
+    const tok=await u.getIdToken();
+    const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(),ms);
+    let r; try{ r=await fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',signal:ctl.signal,headers:{apikey:SUPA_KEY,Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+    catch(e){ throw new Error(e.name==='AbortError'?'التحميل اتأخر، اتأكد من النت وحاول تاني':'مفيش اتصال بالإنترنت'); }
+    finally{ clearTimeout(tm); }
+    const t=await r.text(); let j=null; try{ j=t?JSON.parse(t):null; }catch(e){}
+    if(!r.ok){ const m=(j&&(j.message||j.hint))||t||r.status; const err=new Error(/permission-denied/.test(m)?'مش مسموح':String(m)); err.code=/permission-denied/.test(m)?'permission-denied':'supa'; throw err; }
+    return j;
+  };
+  const nid=()=>{ const a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; let r=''; const b=crypto.getRandomValues(new Uint8Array(20)); for(const x of b) r+=a[x%62]; return r; };
+  const clean=o=>{ const r={}; for(const k in o){ if(k!=='id' && o[k]!==undefined) r[k]=o[k]; } return r; };
+  const settleS=(p,ms=5000)=>Promise.race([p.then(()=>true), sleep(ms).then(()=>false)]);
+  return Object.assign(L,{
+    backend:'supa',
+    async createAdmin(p){ const c=await auth.createUserWithEmailAndPassword(em(ADMIN_USERNAME),p); await rpc('fs_set',{p_col:'users',p_id:c.user.uid,p_data:{name:ADMIN_NAME,username:ADMIN_USERNAME,role:'admin',active:true,createdAt:'__SV__'}}); },
+    async createRep(d){
+      let sec = firebase.apps.find(a=>a.name==='sec') || firebase.initializeApp(FIREBASE_CONFIG,'sec');
+      const c = await sec.auth().createUserWithEmailAndPassword(em(d.username),d.password);
+      const id=c.user.uid;
+      try{ await rpc('fs_set',{p_col:'users',p_id:id,p_data:{name:d.name,username:d.username.toLowerCase(),phone:d.phone||'',role:d.role||'rep',title:d.title||'',section:d.section||'rp',active:true,mustSetPw:true,createdAt:'__SV__'}}); }
+      catch(e){ try{ await c.user.delete(); }catch(_){} try{ await sec.auth().signOut(); }catch(_){} throw e; }
+      await sec.auth().signOut(); dropCol('users');
+      return id;
+    },
+    async get(col,id,opt={}){
+      if(opt.swr) return (await this._q(col,[['#id',id]],{swr:true}))[0]||null;
+      return await rpc('fs_get',{p_col:col,p_id:id});
+    },
+    async _net(col,filters){
+      if(filters.length===1 && filters[0][0]==='#id'){ const d=await rpc('fs_get',{p_col:col,p_id:filters[0][1]}); return d?[d]:[]; }
+      return (await rpc('fs_query',{p_col:col,p_filters:filters}))||[];
+    },
+    async reconnect(){},
+    async arrayAdd(col,id,field,val){ dropCol(col); await settleS(rpc('fs_update',{p_col:col,p_id:id,p_patch:{},p_union:{[field]:[val]}})); },
+    async add(col,data,id){ data=withSec(col,data); dropCol(col); id=id||nid(); const saved=await settleS(rpc('fs_set',{p_col:col,p_id:id,p_data:clean(data)})); dropCol(col); return {id,saved}; },
+    async update(col,id,patch,opt={}){ if(opt.keep) return {saved:await settleS(rpc('fs_update',{p_col:col,p_id:id,p_patch:clean(patch)}))}; dropCol(col); const saved=await settleS(rpc('fs_update',{p_col:col,p_id:id,p_patch:clean(patch)})); dropCol(col); return {saved}; },
+    async batchAdd(col,rows){ rows=rows.map(r=>clean(withSec(col,r))); dropCol(col); for(let i=0;i<rows.length;i+=300) await rpc('fs_add_many',{p_col:col,p_rows:rows.slice(i,i+300)},60000); dropCol(col); },
+    async remove(col,id){ dropCol(col); await rpc('fs_delete',{p_col:col,p_id:id}); dropCol(col); },
+    async addToken(uid,tok){ await rpc('fs_update',{p_col:'users',p_id:uid,p_patch:{notifOn:true,notifAt:Date.now()},p_union:{fcmTokens:[tok]}}); },
+    rpc
+  });
 }
 
 function demoAPI(){
@@ -2004,7 +2055,8 @@ async function trackTick(k){
   try{
     const r=await getLocation(); if(r.err) return;
     const now=Date.now(), id=attId(S.me.id,today()), pt={t:now,lat:r.lat,lng:r.lng,acc:r.acc,k};
-    if(S._trkDoc!==id){
+    if(API.backend==='supa'){ await API.rpc('fs_track',{p_day:today(),p_pt:pt,p_name:S.me.name||'',p_section:secOf(S.me)}); API.clearCache('track'); }
+    else if(S._trkDoc!==id){
       const ex=await API.get('track',id).catch(()=>null);
       if(ex) await API.arrayAdd('track',id,'points',pt);
       else { const w=await API.add('track',{uid:S.me.id,name:S.me.name,day:today(),points:[pt],createdAt:'__SV__'},id); if(!w.saved) return; }
@@ -2054,6 +2106,7 @@ async function nativeFlush(){
     let q=[]; try{ q=JSON.parse(localStorage.getItem('mv_trkq')||'[]'); }catch(e){}
     while(q.length){
       const it=q[0]; if(it.uid!==S.me.id){ q.shift(); continue; }
+      if(API.backend==='supa'){ try{ await API.rpc('fs_track',{p_day:it.day,p_pt:it.pt,p_name:S.me.name||'',p_section:secOf(S.me)}); q.shift(); try{ localStorage.setItem('mv_trkq',JSON.stringify(q)); }catch(e){} continue; }catch(e){ if(e.code==='permission-denied'){ q.shift(); continue; } break; } }
       const tok=await nativeToken();
       const P='projects/'+FIREBASE_CONFIG.projectId+'/databases/(default)/documents', name=P+'/track/'+attId(it.uid,it.day);
       const V={mapValue:{fields:{t:{integerValue:String(it.pt.t)},lat:{doubleValue:it.pt.lat},lng:{doubleValue:it.pt.lng},acc:{integerValue:String(it.pt.acc||0)},k:{stringValue:it.pt.k}}}};
@@ -2087,7 +2140,8 @@ async function trackerStart(open){
     const idTok=await u.getIdToken().catch(()=>null);
     let co=false; try{ const a=await attGet(S.me.id,today()); co=!!(a&&attOut(a)); }catch(e){}
     await nCall('Tracker','start',{uid:S.me.id,name:S.me.name||'',section:secOf(S.me),apiKey:FIREBASE_CONFIG.apiKey,projectId:FIREBASE_CONFIG.projectId,
-      refreshToken:u.refreshToken||'',idToken:idTok||'',idExp:Date.now()+50*60e3,open:!!open,checkedOut:co});
+      refreshToken:u.refreshToken||'',idToken:idTok||'',idExp:Date.now()+50*60e3,open:!!open,checkedOut:co,
+      sbUrl:API.backend==='supa'?SUPA_URL:'',sbKey:API.backend==='supa'?SUPA_KEY:''});
   }catch(e){ console.warn('tracker',e); }
 }
 

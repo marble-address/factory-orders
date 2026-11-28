@@ -40,7 +40,8 @@ public class TrackerPlugin extends Plugin {
         if (uid == null) { call.reject("no uid"); return; }
         if (!uid.equals(sp().getString("uid", null))) e.remove("idTok").remove("idExp").remove("polledUid");
         e.putString("uid", uid).putString("name", call.getString("name", "")).putString("section", call.getString("section", "rp"))
-         .putString("apiKey", call.getString("apiKey")).putString("projectId", call.getString("projectId", "marble-visits"));
+         .putString("apiKey", call.getString("apiKey")).putString("projectId", call.getString("projectId", "marble-visits"))
+         .putString("sbUrl", call.getString("sbUrl", "")).putString("sbKey", call.getString("sbKey", ""));
         String rt = call.getString("refreshToken"); if (rt != null && !rt.isEmpty()) e.putString("rt", rt);
         String it = call.getString("idToken"); Long ix = call.getLong("idExp");
         if (it != null && !it.isEmpty() && ix != null) e.putString("idTok", it).putLong("idExp", ix);
@@ -141,7 +142,7 @@ public class TrackerPlugin extends Plugin {
         o.put("background", Build.VERSION.SDK_INT >= 29 ? String.valueOf(getPermissionState("background")) : "granted");
         o.put("notifications", Build.VERSION.SDK_INT >= 33 ? String.valueOf(getPermissionState("notifications")) : "granted");
         try { PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE); o.put("battery", pm.isIgnoringBatteryOptimizations(c.getPackageName())); } catch (Exception e) { }
-        o.put("version", 3); o.put("fcm", !sp().getString("fcm", "").isEmpty());
+        o.put("version", 4); o.put("fcm", !sp().getString("fcm", "").isEmpty());
         return o;
     }
 }
