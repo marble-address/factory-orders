@@ -292,7 +292,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r4';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r5';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -807,6 +807,7 @@ async function repHome(m){
   m.innerHTML=`
   <div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(who.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
   ${attOn(who)?attStrip(S._att):''}
+  ${isAndroid&&!NATIVE&&!S.viewAs&&S.me.role==='rep'?`<a class="it" href="${APK_URL}" style="margin-top:10px;background:var(--gold3);border-color:var(--gold2)"><div class="avt" style="background:var(--gold)">${ic('down',20)}</div><div class="grow"><b>نزّل تطبيق الأندرويد</b><span class="meta">نفس التطبيق ونفس حسابك · لازم للموقع</span></div></a>`:''}
   ${engH}
   <div class="stats">
     <div class="st"><b>${vToday}</b><span>زيارات اليوم</span></div>
@@ -1988,9 +1989,9 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&_attT) a
 const TRK_EVERY = 2*60*1000;
 let _trkT=null, _trkBusy=false, _trkLast=0;
 const trkOn = () => API.mode==='live' && !BETA && S.me && S.me.role==='rep' && attOn(S.me);
-function trackStart(){ clearInterval(_trkT); _trkT=null; if(!trkOn()) return; trackTick('o'); _trkT=setInterval(()=>trackTick('p'),TRK_EVERY); }
+function trackStart(){ clearInterval(_trkT); _trkT=null; if(!trkOn()) return; if(NATIVE){ _trkNextK='o'; nativeTrack(); return; } trackTick('o'); _trkT=setInterval(()=>trackTick('p'),TRK_EVERY); }
 async function trackTick(k){
-  if(_trkBusy||document.hidden||!trkOn()) return;
+  if(NATIVE||_trkBusy||document.hidden||!trkOn()) return;
   if(Date.now()-_trkLast < (k==='o'?60000:TRK_EVERY-20000)) return;
   _trkBusy=true;
   try{
@@ -2005,7 +2006,60 @@ async function trackTick(k){
     _trkLast=now;
   }catch(e){ console.warn('track',e); } finally{ _trkBusy=false; }
 }
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&trkOn()){ trackTick('o'); if(!_trkT) trackStart(); } });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&trkOn()){ if(NATIVE){ _trkNextK='o'; nativeTrack(); nativeFlush(); return; } trackTick('o'); if(!_trkT) trackStart(); } });
+
+/* ---------- تطبيق الأندرويد: تسجيل الموقع حتى والتطبيق في الخلفية ----------
+   التطبيق (APK) بيفتح نفس اللينك، وبيضيف خدمة موقع في الخلفية (إشعار ثابت «بيتم تسجيل موقعك»).
+   الكتابة بتروح لـ Firestore عن طريق HTTP أصلي (CapacitorHttp) لأن أندرويد بيبطّأ طلبات الـ WebView في الخلفية. */
+const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const APK_URL = 'https://github.com/marble-address/factory-orders/releases/download/android/marble-visits.apk';
+let _bgId=null, _trkNextK=null, _tok=null, _tokExp=0, _nfBusy=false;
+const nCall=(pl,m,o)=>window.Capacitor.nativePromise(pl,m,o||{});
+async function nativeTrack(){
+  if(_bgId!=null||!NATIVE) return; _bgId='…';
+  try{ await nCall('LocalNotifications','requestPermissions').catch(()=>{}); }catch(e){}
+  try{
+    _bgId=window.Capacitor.nativeCallback('BackgroundGeolocation','addWatcher',{backgroundTitle:'قسم المشاريع',backgroundMessage:'بيتم تسجيل موقعك أثناء الشغل',requestPermissions:true,stale:false,distanceFilter:0},(loc,err)=>{
+      if(err){ if(err.code==='NOT_AUTHORIZED') toast('لازم تسمح للتطبيق بالموقع «طول الوقت» من الإعدادات',5000); return; }
+      if(!loc||!trkOn()) return;
+      const k=_trkNextK||'p'; if(k==='p' && Date.now()-_trkLast<TRK_EVERY-20000) return;
+      _trkNextK=null; _trkLast=Date.now();
+      nativeQueue({t:Date.now(),lat:loc.latitude,lng:loc.longitude,acc:Math.round(loc.accuracy||0),k});
+    });
+  }catch(e){ console.warn('bg',e); _bgId=null; }
+}
+function nativeQueue(pt){
+  let q=[]; try{ q=JSON.parse(localStorage.getItem('mv_trkq')||'[]'); }catch(e){}
+  q.push({uid:S.me.id,day:today(),pt}); if(q.length>400) q=q.slice(-400);
+  try{ localStorage.setItem('mv_trkq',JSON.stringify(q)); }catch(e){}
+  nativeFlush();
+}
+async function nativeToken(){
+  if(_tok && Date.now()<_tokExp-5*60e3) return _tok;
+  const u=firebase.auth().currentUser; if(!u) throw new Error('مش مسجل دخول');
+  try{ const r=await nCall('CapacitorHttp','request',{url:'https://securetoken.googleapis.com/v1/token?key='+FIREBASE_CONFIG.apiKey,method:'POST',headers:{'Content-Type':'application/json'},data:{grant_type:'refresh_token',refresh_token:u.refreshToken}});
+    const d=typeof r.data==='string'?JSON.parse(r.data):r.data; if(d&&d.id_token){ _tok=d.id_token; _tokExp=Date.now()+(+d.expires_in||3600)*1000; return _tok; } }catch(e){}
+  _tok=await u.getIdToken(); _tokExp=Date.now()+50*60e3; return _tok;
+}
+async function nativeFlush(){
+  if(_nfBusy||!NATIVE||!S.me) return; _nfBusy=true;
+  try{
+    let q=[]; try{ q=JSON.parse(localStorage.getItem('mv_trkq')||'[]'); }catch(e){}
+    while(q.length){
+      const it=q[0]; if(it.uid!==S.me.id){ q.shift(); continue; }
+      const tok=await nativeToken();
+      const P='projects/'+FIREBASE_CONFIG.projectId+'/databases/(default)/documents', name=P+'/track/'+attId(it.uid,it.day);
+      const V={mapValue:{fields:{t:{integerValue:String(it.pt.t)},lat:{doubleValue:it.pt.lat},lng:{doubleValue:it.pt.lng},acc:{integerValue:String(it.pt.acc||0)},k:{stringValue:it.pt.k}}}};
+      const commit=w=>nCall('CapacitorHttp','request',{url:'https://firestore.googleapis.com/v1/'+P+':commit',method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},data:{writes:[w]}});
+      let r=await commit({transform:{document:name,fieldTransforms:[{fieldPath:'points',appendMissingElements:{values:[V]}}]},currentDocument:{exists:true}});
+      if(r.status===404||r.status===400||r.status===409) r=await commit({update:{name,fields:{uid:{stringValue:it.uid},name:{stringValue:S.me.name||''},day:{stringValue:it.day},section:{stringValue:secOf(S.me)},points:{arrayValue:{values:[V]}}}},currentDocument:{exists:false}});
+      if(r.status>=200&&r.status<300){ q.shift(); try{ localStorage.setItem('mv_trkq',JSON.stringify(q)); }catch(e){} }
+      else { if(r.status===401) _tok=null; if(r.status===403){ q.shift(); continue; } break; }   // مفيش نت: تفضل في الطابور وتتبعت بعدين
+    }
+  }catch(e){ console.warn('flush',e); } finally{ _nfBusy=false; }
+}
+setInterval(()=>{ if(NATIVE) nativeFlush(); },3*60*1000);
+const isAndroid = /Android/i.test(navigator.userAgent);
 
 async function mkTestRep(btn){
   btn.disabled=true;

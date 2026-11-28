@@ -1,0 +1,12 @@
+{
+  "appId": "com.marbleaddress.visits",
+  "appName": "قسم المشاريع",
+  "webDir": "www",
+  "server": {
+    "url": "https://marble-address.github.io/factory-orders/visits/",
+    "androidScheme": "https",
+    "allowNavigation": ["marble-address.github.io", "*.googleapis.com", "*.firebaseapp.com", "*.gstatic.com"]
+  },
+  "android": { "useLegacyBridge": true },
+  "plugins": { "CapacitorHttp": { "enabled": false } }
+}

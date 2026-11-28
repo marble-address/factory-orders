@@ -1,0 +1,49 @@
+name: تطبيق الأندرويد (قسم المشاريع)
+on:
+  push:
+    branches: [main]
+    paths: ['android-app/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm install --no-audit --no-fund
+      - run: npx cap add android
+      - run: pip install pillow && python3 patch.py
+      - run: npx cap sync android
+      - name: Build
+        working-directory: android-app/android
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+      - name: Sign
+        run: |
+          # مفتاح توقيع: من secret اسمه ANDROID_KEYSTORE_B64 لو موجود، وإلا مفتاح مؤقت للبناء ده
+          PW="${ANDROID_KEY_PASS:-$(openssl rand -hex 16)}"
+          if [ -n "$ANDROID_KEYSTORE_B64" ]; then echo "$ANDROID_KEYSTORE_B64" | base64 -d > ks.jks; else
+            keytool -genkeypair -keystore ks.jks -alias marble -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PW" -keypass "$PW" -dname "CN=Marble Address, O=Marble Address, C=SA"; fi
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          IN=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          $BT/zipalign -f -p 4 "$IN" aligned.apk
+          $BT/apksigner sign --ks ks.jks --ks-key-alias marble --ks-pass "pass:$PW" --key-pass "pass:$PW" --out marble-visits.apk aligned.apk
+          $BT/apksigner verify marble-visits.apk && ls -la marble-visits.apk
+          rm -f ks.jks
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android
+          name: تطبيق الأندرويد — قسم المشاريع
+          body: نزّل الملف وثبته على موبايل الأندرويد. التطبيق بيفتح نفس لينك «قسم المشاريع» وبيسجل الموقع حتى والتطبيق في الخلفية.
+          files: android-app/marble-visits.apk
+          make_latest: true
