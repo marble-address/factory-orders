@@ -50,6 +50,7 @@ svg{flex-shrink:0}
 .viewas b{font-weight:500}
 .beta{background:#7A3E9D;color:#fff;text-align:center;font-size:12px;padding:4px 8px}
 .hdr .mnu{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.14);flex:none}
+.leaflet-container{z-index:0;isolation:isolate}
 .drw{position:fixed;inset:0;z-index:60;display:flex}
 .drw .bk{flex:1;background:rgba(0,0,0,.38)}
 .drw .pn{width:min(300px,82vw);background:#fff;height:100%;overflow:auto;box-shadow:-4px 0 18px rgba(0,0,0,.12);padding-top:var(--safe-t)}
@@ -298,7 +299,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r10';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r11';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -743,7 +744,7 @@ async function boot(){
         S.users = isAdmin() ? await API.query('users',[],{swr:true}) : [me];
         render();
       }
-      startHeartbeat(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh()); handleDeepLink(); prefetchTabs(); trackStart();
+      startHeartbeat(); startRealtime(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh()); handleDeepLink(); prefetchTabs(); trackStart();
     }catch(e){ console.error(e); if(was){ S.me=was; return; } renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
   });
 }
@@ -1179,7 +1180,7 @@ async function doSetPw(btn){
     await API.changePassword(a);
     await API.update('users',S.me.id,{mustSetPw:false}); S.me.mustSetPw=false;
     S.users = isAdmin() ? await API.query('users',[],{fresh:true}) : [S.me];
-    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh());
+    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); startRealtime(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh());
   }catch(e){
     if(e&&e.code==='auth/requires-recent-login'){ await API.logout(); renderLogin('اطلب لينك دخول جديد من المدير.'); return; }
     btn.disabled=false; btn.textContent='حفظ ودخول'; $('#lerr').textContent='مقدرش أحفظ: '+(e.message||e);
@@ -1927,6 +1928,29 @@ async function silentPushRefresh(){
 
 /* ---------- المتصلين ---------- */
 let _hb=null;
+/* ---------- تحديث لحظي (Supabase Realtime) ----------
+   السيرفر بيبعت إشارة صغيرة مع كل تغيير (القسم + الرقم بس) → بنمسح الكاش بتاع القسم ده ونعيد رسم الشاشة المفتوحة بهدوء */
+let _rt=null, _rtMap=null, _rtCols=new Set(), _rtT=null;
+async function startRealtime(){
+  if(_rt||API.backend!=='supa') return;
+  _rt='…';
+  try{
+    if(!window.supabase) await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
+    const cl=window.supabase.createClient(SUPA_URL,SUPA_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+    _rt=cl.channel('mv').on('broadcast',{event:'chg'},m=>onRemoteChange((m&&m.payload)||{})).subscribe(st=>{ if(st==='CHANNEL_ERROR'||st==='TIMED_OUT') console.warn('realtime',st); });
+  }catch(e){ console.warn('realtime',e); _rt=null; }
+}
+function onRemoteChange(p){
+  const col=p.col; if(!col||!S.me) return;
+  if(col==='track'||col==='attendance'){   // المواقع: الخريطة اللحظية + كارت الحضور
+    API.clearCache(col);
+    if(S.tab==='map'&&S._map&&S.mapRep==='all'&&S.mapDay===today()){ clearTimeout(_rtMap); _rtMap=setTimeout(async()=>{ try{ S._live=await liveLocs(true); drawLive(false); }catch(e){} },1500); return; }
+    if(col==='track') return;
+  }
+  if(col==='notifs'){ API.clearCache('notifs'); refreshBell(); }
+  _rtCols.add(col); clearTimeout(_rtT);
+  _rtT=setTimeout(()=>{ const cs=[..._rtCols]; _rtCols.clear(); cs.forEach(c=>API.clearCache(c)); if(S.tab==='map'&&S._map&&cs.includes('visits')){ renderTab(); return; } softRefresh(); },800);
+}
 function startHeartbeat(){
   const beat=()=>{ if(!S.me||document.hidden) return; API.update('users',S.me.id,{lastSeen:Date.now()},{keep:true}).catch(()=>{}); /* keep: ما يمسحش البيانات المحفوظة كل دقيقة */ refreshBell(); if(isAdmin()) refreshOnline(); };
   clearInterval(_hb); beat(); _hb=setInterval(beat,60000);
