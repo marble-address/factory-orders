@@ -287,7 +287,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r2';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r3';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -621,7 +621,7 @@ const isEng = () => S.me && S.me.role==='eng';
 const isTop = () => isAdmin() && (!S.me.section || S.me.section==='all');   // محمود وأحمد كامل: كل الأقسام
 const isSecAdm = () => isAdmin() && !isTop();   // مدير قسم (زي العزوني): قسمه بس
 // كل مستند بيتكتب عليه القسم بتاعه (قسم المندوب صاحب العميل/الزيارة)، عشان مدير القسم يشوف قسمه بس
-const SEC_COLS = ['customers','visits','photos','contacts','comments','tasks','notifs','attendance','engreq'], SEC_Q = SEC_COLS.concat(['users']);
+const SEC_COLS = ['customers','visits','photos','contacts','comments','tasks','notifs','attendance','track','engreq'], SEC_Q = SEC_COLS.concat(['users']);
 function secFor(d){ for(const k of ['ownerUid','repUid','uid','toUid','fromUid']){ const id=d[k]; if(!id) continue; const u=userById(id)||(S.me&&S.me.id===id?S.me:null); if(u&&u.role==='rep') return secOf(u); } return curSec(); }
 function withSec(col,d){ return (SEC_COLS.includes(col) && d && !d.section) ? {...d,section:secFor(d)} : d; }
 function curSec(){
@@ -687,7 +687,7 @@ async function boot(){
         S.users = isAdmin() ? await API.query('users',[],{swr:true}) : [me];
         render();
       }
-      startHeartbeat(); if(!BETA) silentPushRefresh(); handleDeepLink(); prefetchTabs();
+      startHeartbeat(); if(!BETA) silentPushRefresh(); handleDeepLink(); prefetchTabs(); trackStart();
     }catch(e){ console.error(e); if(was){ S.me=was; return; } renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
   });
 }
@@ -1000,7 +1000,7 @@ async function drawMap(vs,rep){
   if(rep!=='all'&&ax&&ax.ps.length){
     ax.ps.forEach(p=>{ const k=p.k==='in'?'حضور':p.k==='out'?'انصراف':'';
       if(k) L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div class="pinmk" style="background:${p.k==='in'?'#0A6B43':'#7A7466'}"><span>${p.k==='in'?'▶':'■'}</span></div>`,iconSize:[28,28],iconAnchor:[14,28]})}).addTo(map).bindPopup(`<div style="direction:rtl;text-align:right"><b>${k}</b><br>${fTime(p.t)}</div>`);
-      else L.circleMarker([p.lat,p.lng],{radius:4,color:repColor(rep),weight:1,fillOpacity:.8}).addTo(map).bindPopup(`<div style="direction:rtl">${fTime(p.t)}</div>`); });
+      else L.circleMarker([p.lat,p.lng],{radius:p.k==='o'?6:4,color:repColor(rep),weight:1,fillOpacity:.8}).addTo(map).bindPopup(`<div style="direction:rtl">${p.k==='o'?'فتح التطبيق · ':''}${fTime(p.t)}</div>`); });
     line=vs.map(v=>({t:v.createdAt,lat:v.lat,lng:v.lng})).concat(ax.ps).sort((x,y)=>x.t-y.t).map(p=>[p.lat,p.lng]);
     ax.ps.forEach(p=>pts.push([p.lat,p.lng]));
   }
@@ -1885,7 +1885,7 @@ async function doDelCust(id,btn){
 }
 
 /* ================= بصمة الحضور: كل المناديب (اللي attendance!==false) + شاشة المديرين ================= */
-const ATT_EVERY = 5*60*1000, ATT_GAP = 15*60*1000;
+const ATT_EVERY = 5*60*1000, ATT_GAP = 10*60*1000;
 const attAdminView = () => !!(S.me && S.me.role==='admin' && !S.viewAs);
 const attTestView = () => !!(S.me && S.me.username==='mahmoud' && !S.viewAs);   // حساب التجربة لمحمود بس
 const attOn = u => !!(u && u.role==='rep' && u.attendance!==false && u.active!==false);
@@ -1944,6 +1944,29 @@ async function attTick(){
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&_attT) attTick(); });
 
+/* تتبع الموقع: أول ما المندوب يفتح التطبيق (في أي وقت، باصم أو لأ) + كل دقيقتين طول ما هو مفتوح — في track/{uid}_{day} */
+const TRK_EVERY = 2*60*1000;
+let _trkT=null, _trkBusy=false, _trkLast=0;
+const trkOn = () => API.mode==='live' && !BETA && S.me && S.me.role==='rep' && attOn(S.me);
+function trackStart(){ clearInterval(_trkT); _trkT=null; if(!trkOn()) return; trackTick('o'); _trkT=setInterval(()=>trackTick('p'),TRK_EVERY); }
+async function trackTick(k){
+  if(_trkBusy||document.hidden||!trkOn()) return;
+  if(Date.now()-_trkLast < (k==='o'?60000:TRK_EVERY-20000)) return;
+  _trkBusy=true;
+  try{
+    const r=await getLocation(); if(r.err) return;
+    const now=Date.now(), id=attId(S.me.id,today()), pt={t:now,lat:r.lat,lng:r.lng,acc:r.acc,k};
+    if(S._trkDoc!==id){
+      const ex=await API.get('track',id).catch(()=>null);
+      if(ex) await API.arrayAdd('track',id,'points',pt);
+      else { const w=await API.add('track',{uid:S.me.id,name:S.me.name,day:today(),points:[pt],createdAt:'__SV__'},id); if(!w.saved) return; }
+      S._trkDoc=id;
+    } else await API.arrayAdd('track',id,'points',pt);
+    _trkLast=now;
+  }catch(e){ console.warn('track',e); } finally{ _trkBusy=false; }
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&trkOn()){ trackTick('o'); if(!_trkT) trackStart(); } });
+
 async function mkTestRep(btn){
   btn.disabled=true;
   try{ await API.add('users',{name:'مندوب تجربة',username:'test',phone:'',role:'rep',test:true,attendance:true,active:true,createdAt:'__SV__'}); S.users=await API.query('users',[],{fresh:true}); toast('اتعمل حساب التجربة'); renderTab(); }
@@ -1964,8 +1987,9 @@ async function attCard(vsToday){
 /* نقاط البصمة على الخريطة */
 async function attMapPoints(rep,day){
   const u=userById(rep); if(!attOn(u)) return null;
-  const a=await attGet(rep,day); if(!a) return null;
-  const ps=attPts(a); const gaps=[]; const o=attOut(a);
+  const [a,tr]=await Promise.all([attGet(rep,day), API.get('track',attId(rep,day)).catch(()=>null)]);
+  const tp=(tr&&tr.points)||[]; if(!a&&!tp.length) return null;
+  const ps=attPts(a).concat(tp).sort((x,y)=>x.t-y.t); const gaps=[]; const o=attOut(a);
   for(let i=1;i<ps.length;i++) if(ps[i].t-ps[i-1].t>ATT_GAP) gaps.push([ps[i-1].t,ps[i].t]);
   if(!o && ps.length && Date.now()-ps[ps.length-1].t>ATT_GAP && day===today()) gaps.push([ps[ps.length-1].t,Date.now()]);
   return {a,ps,gaps,o};
@@ -1973,12 +1997,12 @@ async function attMapPoints(rep,day){
 function attTimeline(x,vs=[]){
   if(!x) return '';
   const {a,ps,gaps,o}=x;
-  const ev=[{t:a.inAt,h:`<b>حضور</b> · بصمة`,c:'#0A6B43'}]
+  const ev=(a&&a.inAt?[{t:a.inAt,h:`<b>حضور</b> · بصمة`,c:'#0A6B43'}]:[])
     .concat(vs.map(v=>({t:v.createdAt,h:`<b>زيارة</b> · ${esc(v.customerName||'')}${v.result?' · '+esc(v.result):''}${v.flagged?' · <span style="color:var(--red)">ملاحظة</span>':''}`,c:repColor(v.repUid),id:v.id})))
     .concat(gaps.map(g=>({t:g[0],h:`<span style="color:var(--amber)">مفيش مواقع لحد ${fTime(g[1])}</span>`,c:'#B7791F'})))
     .concat(o?[{t:o.t,h:`<b>انصراف</b>${o.auto?' (تلقائي)':''}`,c:'#7A7466'}]:[]).sort((x,y)=>x.t-y.t);
   const seq=`<div class="sec"><h3>تسلسل اليوم</h3></div><div class="card" style="padding:6px 12px">${ev.map(e=>`<div class="row" style="gap:10px;padding:8px 0;border-bottom:1px solid #F1EDE3;align-items:center"><span style="min-width:62px;font-size:11px;color:#5F5A4E">${fTime(e.t)}</span><i style="width:9px;height:9px;border-radius:50%;background:${e.c};flex:none"></i><div class="grow" style="font-size:12.5px">${e.id?`<button data-act="openVisit" data-id="${e.id}" style="text-align:start;width:100%">${e.h}</button>`:e.h}</div></div>`).join('')}</div>`;
-  return `<div class="card" style="margin-top:10px"><div class="row" style="gap:8px">${ic('finger',18)}<div class="grow"><b style="font-weight:500">البصمة</b><div class="small muted">حضور ${fTime(a.inAt)}${o?` · انصراف ${fTime(o.t)}${o.auto?' (تلقائي)':''} · ${hm(o.t-a.inAt)}`:' · لسه في الدوام'} · ${ps.length} نقطة موقع</div></div></div>
+  return `<div class="card" style="margin-top:10px"><div class="row" style="gap:8px">${ic('finger',18)}<div class="grow"><b style="font-weight:500">البصمة</b><div class="small muted">${a&&a.inAt?`حضور ${fTime(a.inAt)}${o?` · انصراف ${fTime(o.t)}${o.auto?' (تلقائي)':''} · ${hm(o.t-a.inAt)}`:' · لسه في الدوام'}`:'لسه ما بصمش'} · ${ps.length} نقطة موقع</div></div></div>
   ${gaps.length?`<div class="small" style="margin-top:8px;color:var(--amber)">${gaps.map(g=>`من ${fTime(g[0])} لـ ${fTime(g[1])} مفيش مواقع (التطبيق كان مقفول)`).join('<br>')}</div>`:''}</div>${seq}`;
 }
 

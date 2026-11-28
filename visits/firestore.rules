@@ -115,6 +115,17 @@ service cloud.firestore {
       allow delete: if isTop();
     }
 
+    // تتبع الموقع: أول ما المندوب يفتح التطبيق + كل دقيقتين طول ما هو مفتوح (مستند لكل مندوب في اليوم uid_day)
+    match /track/{id} {
+      allow read: if isTop() || secRead() || (isUser() && resource.data.uid == request.auth.uid);
+      allow create: if isTop() || secNew() || (isRep() && request.resource.data.uid == request.auth.uid
+                                     && id == request.auth.uid + '_' + request.resource.data.day);
+      allow update: if isTop() || secEdit()
+                    || (isRep() && resource.data.uid == request.auth.uid
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points']));
+      allow delete: if isTop();
+    }
+
     // طلبات زيارة المهندس: المندوب بيطلب، المهندس بيحدد ميعاد ويقفل، والاتنين بيتكلموا في المحادثة
     match /engreq/{id} {
       allow read: if isTop() || secRead() || isEng() || (isRep() && resource.data.repUid == request.auth.uid);
