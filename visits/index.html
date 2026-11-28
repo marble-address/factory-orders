@@ -292,7 +292,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r6';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r7';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -692,7 +692,7 @@ async function boot(){
         S.users = isAdmin() ? await API.query('users',[],{swr:true}) : [me];
         render();
       }
-      startHeartbeat(); if(!BETA) silentPushRefresh(); handleDeepLink(); prefetchTabs(); trackStart();
+      startHeartbeat(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh()); handleDeepLink(); prefetchTabs(); trackStart();
     }catch(e){ console.error(e); if(was){ S.me=was; return; } renderLogin('حصلت مشكلة في الدخول: '+(e.message||e)); }
   });
 }
@@ -1128,7 +1128,7 @@ async function doSetPw(btn){
     await API.changePassword(a);
     await API.update('users',S.me.id,{mustSetPw:false}); S.me.mustSetPw=false;
     S.users = isAdmin() ? await API.query('users',[],{fresh:true}) : [S.me];
-    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); if(!BETA) silentPushRefresh();
+    toast('اتحفظت كلمة المرور ✓'); render(); startHeartbeat(); if(!BETA) (TRACKER?nativePush(true):silentPushRefresh());
   }catch(e){
     if(e&&e.code==='auth/requires-recent-login'){ await API.logout(); renderLogin('اطلب لينك دخول جديد من المدير.'); return; }
     btn.disabled=false; btn.textContent='حفظ ودخول'; $('#lerr').textContent='مقدرش أحفظ: '+(e.message||e);
@@ -1827,6 +1827,12 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 function pushSupported(){ return ('serviceWorker' in navigator) && ('Notification' in window) && ('PushManager' in window); }
 function pushState(){
   if(API.mode==='demo') return {html:`<div class="warnbox">${ic('bell',18)}<div>في النسخة الحقيقية هنا بتفعّل إشعارات الموبايل.</div></div>`};
+  if(TRACKER){
+    if(_np==='ok') return {html:`<div class="card row" style="padding:10px 12px">${ic('bell',18)}<div class="grow small">الإشعارات شغالة على الموبايل ده ✓</div></div>`};
+    if(_np==='old') return {html:`<div class="warnbox">${ic('bell',18)}<div>عشان الإشعارات توصلك في أي وقت: نزّل آخر نسخة من تطبيق الأندرويد.</div></div>`};
+    if(_np==='denied') return {html:`<div class="warnbox red">${ic('warn',18)}<div>الإشعارات مقفولة للتطبيق ده من إعدادات الموبايل. افتح الإعدادات ← التطبيقات ← «قسم المشاريع» ← الإشعارات وخليها مسموحة، وبعدين اضغط «فعّل الإشعارات».</div><button class="btn sm" data-act="enablePush">فعّل الإشعارات</button></div>`};
+    return {html:`<div class="card row" style="padding:10px 12px">${ic('bell',18)}<div class="grow small">فعّل الإشعارات عشان رسايل المدير توصلك في أي وقت</div><button class="btn sm" data-act="enablePush">فعّل الإشعارات</button></div>`};
+  }
   if(isIOS && !isStandalone()) return {html:`<div class="warnbox">${ic('bell',18)}<div><b style="font-weight:500">عشان الإشعارات توصلك على الآيفون:</b><br>افتح اللينك من Safari ← زرار المشاركة ← «إضافة إلى الشاشة الرئيسية»، وافتح التطبيق من الأيقونة الجديدة، وبعدين ارجع هنا وفعّل الإشعارات.</div></div>`};
   if(!pushSupported()) return {html:`<div class="warnbox">${ic('warn',18)}<div>المتصفح ده مش بيدعم الإشعارات. افتح التطبيق من Chrome أو Safari.</div></div>`};
   if(Notification.permission==='denied') return {html:`<div class="warnbox red">${ic('warn',18)}<div>الإشعارات مقفولة للتطبيق ده من إعدادات الموبايل. افتح الإعدادات ← الإشعارات ← «قسم المشاريع» وخليها مسموحة.</div></div>`};
@@ -1844,6 +1850,7 @@ async function initMessaging(){
   return _msg;
 }
 async function enablePush(btn){
+  if(TRACKER){ if(btn) btn.disabled=true; await nativePush(true,true); toast(_np==='ok'?'تمام، الإشعارات اشتغلت ✓':_np==='old'?'نزّل آخر نسخة من تطبيق الأندرويد':'لازم تسمح بالإشعارات'); closeSheet(true); openBell(); return; }
   if(API.mode==='demo'){ toast('في النسخة الحقيقية بس'); return; }
   if(!VAPID_KEY){ toast('الإشعارات لسه بتتجهز'); return; }
   if(isIOS && !isStandalone()){ toast('ضيف التطبيق للشاشة الرئيسية الأول'); return; }
@@ -2062,6 +2069,17 @@ setInterval(()=>{ if(NATIVE) nativeFlush(); },3*60*1000);
 const isAndroid = /Android/i.test(navigator.userAgent);
 /* النسخة 2 من تطبيق الأندرويد: خدمة موقع أصلية (Tracker) بتسجل وتبعت لوحدها حتى والتطبيق مقفول، وبتعرض إشعارات المدير */
 const TRACKER = NATIVE && !!((window.Capacitor.PluginHeaders||[]).some(p=>p.name==='Tracker') || (window.Capacitor.isPluginAvailable&&window.Capacitor.isPluginAvailable('Tracker')));
+/* إشعارات الأندرويد الحقيقية (FCM) — توكن الموبايل بيتسجل في حساب المستخدم والإشعار يوصل حتى والتطبيق مقفول */
+let _np='';
+async function nativePush(ask,force){
+  if(!TRACKER||!S.me||API.mode==='demo') return;
+  try{
+    const r=await nCall('Tracker','pushToken',{ask:!!ask,force:!!force}); const tok=r&&r.token; if(!tok) return;
+    if(!(S.me.fcmTokens||[]).includes(tok)){ await API.addToken(S.me.id,tok); S.me.fcmTokens=(S.me.fcmTokens||[]).concat(tok); }
+    S.me.notifOn=true; _np=r.granted===false?'denied':'ok';
+    nCall('Tracker','pushOk',{uid:S.me.id}).catch(()=>{});
+  }catch(e){ const m=String(e&&e.message||e); _np=/not implemented|pushToken/i.test(m)?'old':'err'; console.warn('push',m); }
+}
 async function trackerStart(open){
   if(!TRACKER||!trkOn()) return;
   try{

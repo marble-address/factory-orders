@@ -16,6 +16,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 /* الجسر بين صفحة التطبيق والخدمة الأصلية: start / stop / status */
 @CapacitorPlugin(name = "Tracker", permissions = {
@@ -94,9 +95,38 @@ public class TrackerPlugin extends Plugin {
         final boolean clear = Boolean.TRUE.equals(call.getBoolean("clear", false));
         new Thread(() -> {
             TrackerStore.flush(c);
-            if (clear) sp().edit().remove("uid").remove("rt").remove("idTok").remove("idExp").remove("polledUid").apply();
+            if (clear) sp().edit().remove("uid").remove("rt").remove("idTok").remove("idExp").remove("polledUid").remove("fcmUid").apply();
         }).start();
         call.resolve(status());
+    }
+
+    /* إشعارات FCM: بيطلب إذن الإشعارات (مرة في اليوم بالكتير) وبيرجع توكن الموبايل ده */
+    @PluginMethod public void pushToken(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.GRANTED
+                && Boolean.TRUE.equals(call.getBoolean("ask", false))
+                && (Boolean.TRUE.equals(call.getBoolean("force", false)) || !askedToday("pn"))) {
+            requestPermissionForAlias("notifications", call, "afterPushPerm"); return;
+        }
+        afterPushPerm(call);
+    }
+
+    @PermissionCallback private void afterPushPerm(PluginCall call) {
+        final boolean granted = Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED;
+        PushService.channel(getContext());
+        try {
+            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(t -> {
+                if (t.isSuccessful() && t.getResult() != null) {
+                    sp().edit().putString("fcm", t.getResult()).apply();
+                    JSObject o = new JSObject(); o.put("token", t.getResult()); o.put("granted", granted); call.resolve(o);
+                } else call.reject("fcm: " + (t.getException() != null ? t.getException().getMessage() : "no token"));
+            });
+        } catch (Exception e) { call.reject("fcm: " + e.getMessage()); }
+    }
+
+    /* الصفحة سجلت التوكن في حساب المستخدم — من هنا الإشعارات بتيجي من FCM بس (من غير تكرار) */
+    @PluginMethod public void pushOk(PluginCall call) {
+        String uid = call.getString("uid"); if (uid != null) sp().edit().putString("fcmUid", uid).apply();
+        call.resolve();
     }
 
     @PluginMethod public void status(PluginCall call) { call.resolve(status()); }
@@ -111,7 +141,7 @@ public class TrackerPlugin extends Plugin {
         o.put("background", Build.VERSION.SDK_INT >= 29 ? String.valueOf(getPermissionState("background")) : "granted");
         o.put("notifications", Build.VERSION.SDK_INT >= 33 ? String.valueOf(getPermissionState("notifications")) : "granted");
         try { PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE); o.put("battery", pm.isIgnoringBatteryOptimizations(c.getPackageName())); } catch (Exception e) { }
-        o.put("version", 2);
+        o.put("version", 3); o.put("fcm", !sp().getString("fcm", "").isEmpty());
         return o;
     }
 }

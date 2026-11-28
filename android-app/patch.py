@@ -56,3 +56,28 @@ if 'play-services-location' not in g:
     g += '\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.3.0"\n    implementation "androidx.work:work-runtime:2.10.0"\n}\n'
 open(bg, 'w', encoding='utf-8').write(g)
 print('tracker patched')
+
+# ---- إشعارات FCM الحقيقية ----
+shutil.copy('google-services.json', 'android/app/google-services.json')
+m = open(mf, encoding='utf-8').read()
+if 'PushService' not in m:
+    push = '''        <service android:name=".PushService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="mv_msgs" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@android:drawable/stat_notify_chat" />
+'''
+    m = m.replace('</application>', push + '    </application>', 1)
+    open(mf, 'w', encoding='utf-8').write(m)
+g = open(bg, encoding='utf-8').read()
+if 'firebase-messaging' not in g:
+    g += '\ndependencies {\n    implementation "com.google.firebase:firebase-messaging:24.1.2"\n}\n'
+if 'com.google.gms.google-services' not in g:
+    g += "\napply plugin: 'com.google.gms.google-services'\n"
+open(bg, 'w', encoding='utf-8').write(g)
+rb = 'android/build.gradle'
+r = open(rb, encoding='utf-8').read()
+if 'com.google.gms:google-services' not in r:
+    r = r.replace("dependencies {", "dependencies {\n        classpath 'com.google.gms:google-services:4.4.2'", 1)
+    open(rb, 'w', encoding='utf-8').write(r)
+print('fcm patched')

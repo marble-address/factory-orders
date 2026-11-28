@@ -172,6 +172,7 @@ final class TrackerStore {
             Resp r = http("https://firestore.googleapis.com/v1/" + base(c) + ":runQuery", "application/json", q.toString(), tok);
             if (r.code != 200) return;
             SharedPreferences s = sp(c);
+            boolean fcmOn = !s.getString("fcm", "").isEmpty() && uid.equals(s.getString("fcmUid", ""));
             boolean first = !uid.equals(s.getString("polledUid", ""));
             JSONArray shown = new JSONArray(s.getString("shown", "[]"));
             Set<String> set = new HashSet<>(); for (int i = 0; i < shown.length(); i++) set.add(shown.optString(i));
@@ -184,10 +185,25 @@ final class TrackerStore {
                 long ct = isoTime(d.optString("createTime", ""));
                 if (now - ct > (first ? 15 * 60000L : 24 * 3600000L)) continue;
                 JSONObject fl = d.optJSONObject("fields"); if (fl == null) continue;
+                if (fcmOn) continue;   // الإشعار بيوصل من FCM — ما نكررهوش
                 show(c, id, str(fl, "title"), str(fl, "body"));
             }
             if (shown.length() > 300) { JSONArray t = new JSONArray(); for (int i = shown.length() - 300; i < shown.length(); i++) t.put(shown.get(i)); shown = t; }
             s.edit().putString("shown", shown.toString()).putString("polledUid", uid).apply();
+        } catch (Exception e) { }
+    }
+
+    /* بيضيف توكن FCM بتاع الموبايل ده لحساب المندوب (fcmTokens) عشان الإشعارات توصله */
+    static void addFcm(Context c, String fcm) {
+        try {
+            String uid = sp(c).getString("uid", null); if (uid == null || fcm == null || fcm.isEmpty()) return;
+            String tok = token(c, false); if (tok == null) return;
+            JSONObject w = new JSONObject().put("transform", new JSONObject()
+                    .put("document", base(c) + "/users/" + uid)
+                    .put("fieldTransforms", new JSONArray().put(new JSONObject().put("fieldPath", "fcmTokens")
+                            .put("appendMissingElements", new JSONObject().put("values", new JSONArray().put(sv(fcm)))))));
+            Resp r = commit(c, tok, w);
+            if (r.code == 200) sp(c).edit().putString("fcmUid", uid).apply();
         } catch (Exception e) { }
     }
 
