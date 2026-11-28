@@ -292,7 +292,7 @@ const ADMIN_USERNAME = 'mahmoud';
 const ADMIN_NAME = 'محمود أبوسيف';
 const MAX_DIST = 300;           // أقصى مسافة مسموحة من موقع العميل بالمتر
 const OLD_PHOTO_MIN = 15;       // صورة أقدم من كده تتعلّم (غالبًا من المعرض)
-const BUILD = '2026-11-28-r5';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
+const BUILD = '2026-11-28-r6';   // غيّرها مع كل نشر + نفس الرقم في version.json — التطبيق المفتوح بيعيد التحميل لو لقى نسخة أحدث
 const BETA = /visits-beta/.test(location.pathname);
 const SECTIONS = [
   {id:'rp', name:'مشاريع', city:'الرياض', color:'#065A36', dark:'#0A6B43'},
@@ -807,7 +807,7 @@ async function repHome(m){
   m.innerHTML=`
   <div class="hello"><h2>${h<12?'صباح الخير':'مساء الخير'}، ${esc(who.name.split(' ')[0])}</h2><p>${fDay(Date.now())}</p></div>
   ${attOn(who)?attStrip(S._att):''}
-  ${isAndroid&&!NATIVE&&!S.viewAs&&S.me.role==='rep'?`<a class="it" href="${APK_URL}" style="margin-top:10px;background:var(--gold3);border-color:var(--gold2)"><div class="avt" style="background:var(--gold)">${ic('down',20)}</div><div class="grow"><b>نزّل تطبيق الأندرويد</b><span class="meta">نفس التطبيق ونفس حسابك · لازم للموقع</span></div></a>`:''}
+  ${isAndroid&&!TRACKER&&!S.viewAs&&S.me.role==='rep'?`<a class="it" href="${APK_URL}" style="margin-top:10px;background:var(--gold3);border-color:var(--gold2)"><div class="avt" style="background:var(--gold)">${ic('down',20)}</div><div class="grow"><b>${NATIVE?'نزّل النسخة الجديدة من تطبيق الأندرويد':'نزّل تطبيق الأندرويد'}</b><span class="meta">${NATIVE?'امسح التطبيق القديم الأول وبعدين ثبّت الجديد · لازم للموقع':'نفس التطبيق ونفس حسابك · لازم للموقع'}</span></div></a>`:''}
   ${engH}
   <div class="stats">
     <div class="st"><b>${vToday}</b><span>زيارات اليوم</span></div>
@@ -1955,7 +1955,7 @@ async function attIn(btn){
   const now=Date.now(), p={t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'in'};
   try{ await API.add('attendance',{uid:who.id,name:who.name,day:today(),inAt:now,inLoc:{lat:r.lat,lng:r.lng,acc:r.acc},points:[p],byAdmin:byAdminTag(),createdAt:'__SV__'},attId(who.id,today())); }
   catch(e){ console.warn('attIn',e); toast('البصمة ما اتسجلتش، اتأكد من النت وجرب تاني',4500); if(btn){ btn.disabled=false; btn.textContent='بصمة'; } return; }
-  toast('اتسجلت بصمتك ✓ '+fTime(now)); attTrack(true); renderTab();
+  toast('اتسجلت بصمتك ✓ '+fTime(now)); attTrack(true); if(TRACKER) trackerStart(false); renderTab();
 }
 function attEndAsk(){
   sheet('إنهاء الدوام',`<div class="small muted" style="margin-top:10px">هيتسجل وقت انصرافك وموقعك دلوقتي.</div>`,`<div class="btns"><button class="btn sec2" data-act="closeSheet">إلغاء</button><button class="btn" data-act="attEndGo">إنهاء الدوام</button></div>`);
@@ -1967,7 +1967,7 @@ async function attEnd(btn){
   try{ await API.update('attendance',attId(who.id,today()),patch); }
   catch(e){ console.warn('attEnd',e); toast('الانصراف ما اتسجلش، اتأكد من النت وجرب تاني',4500); btn.disabled=false; btn.textContent='إنهاء الدوام'; return; }
   if(!r.err) await API.arrayAdd('attendance',attId(who.id,today()),'points',{t:now,lat:r.lat,lng:r.lng,acc:r.acc,k:'out'}).catch(()=>{});
-  attTrack(false); closeSheet(true); toast('اتسجل انصرافك'); renderTab();
+  attTrack(false); if(TRACKER) nCall('Tracker','stop',{}).catch(()=>{}); closeSheet(true); toast('اتسجل انصرافك'); renderTab();
 }
 let _attT=null, _attBusy=false;
 function attTrack(on){
@@ -1989,7 +1989,7 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&_attT) a
 const TRK_EVERY = 2*60*1000;
 let _trkT=null, _trkBusy=false, _trkLast=0;
 const trkOn = () => API.mode==='live' && !BETA && S.me && S.me.role==='rep' && attOn(S.me);
-function trackStart(){ clearInterval(_trkT); _trkT=null; if(!trkOn()) return; if(NATIVE){ _trkNextK='o'; nativeTrack(); return; } trackTick('o'); _trkT=setInterval(()=>trackTick('p'),TRK_EVERY); }
+function trackStart(){ clearInterval(_trkT); _trkT=null; if(!trkOn()) return; if(TRACKER){ trackerStart(true); return; } if(NATIVE){ _trkNextK='o'; nativeTrack(); return; } trackTick('o'); _trkT=setInterval(()=>trackTick('p'),TRK_EVERY); }
 async function trackTick(k){
   if(NATIVE||_trkBusy||document.hidden||!trkOn()) return;
   if(Date.now()-_trkLast < (k==='o'?60000:TRK_EVERY-20000)) return;
@@ -2006,7 +2006,7 @@ async function trackTick(k){
     _trkLast=now;
   }catch(e){ console.warn('track',e); } finally{ _trkBusy=false; }
 }
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&trkOn()){ if(NATIVE){ _trkNextK='o'; nativeTrack(); nativeFlush(); return; } trackTick('o'); if(!_trkT) trackStart(); } });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&trkOn()){ if(TRACKER){ trackerStart(true); return; } if(NATIVE){ _trkNextK='o'; nativeTrack(); nativeFlush(); return; } trackTick('o'); if(!_trkT) trackStart(); } });
 
 /* ---------- تطبيق الأندرويد: تسجيل الموقع حتى والتطبيق في الخلفية ----------
    التطبيق (APK) بيفتح نفس اللينك، وبيضيف خدمة موقع في الخلفية (إشعار ثابت «بيتم تسجيل موقعك»).
@@ -2060,6 +2060,18 @@ async function nativeFlush(){
 }
 setInterval(()=>{ if(NATIVE) nativeFlush(); },3*60*1000);
 const isAndroid = /Android/i.test(navigator.userAgent);
+/* النسخة 2 من تطبيق الأندرويد: خدمة موقع أصلية (Tracker) بتسجل وتبعت لوحدها حتى والتطبيق مقفول، وبتعرض إشعارات المدير */
+const TRACKER = NATIVE && !!((window.Capacitor.PluginHeaders||[]).some(p=>p.name==='Tracker') || (window.Capacitor.isPluginAvailable&&window.Capacitor.isPluginAvailable('Tracker')));
+async function trackerStart(open){
+  if(!TRACKER||!trkOn()) return;
+  try{
+    const u=firebase.auth().currentUser; if(!u) return;
+    const idTok=await u.getIdToken().catch(()=>null);
+    let co=false; try{ const a=await attGet(S.me.id,today()); co=!!(a&&attOut(a)); }catch(e){}
+    await nCall('Tracker','start',{uid:S.me.id,name:S.me.name||'',section:secOf(S.me),apiKey:FIREBASE_CONFIG.apiKey,projectId:FIREBASE_CONFIG.projectId,
+      refreshToken:u.refreshToken||'',idToken:idTok||'',idExp:Date.now()+50*60e3,open:!!open,checkedOut:co});
+  }catch(e){ console.warn('tracker',e); }
+}
 
 async function mkTestRep(btn){
   btn.disabled=true;
@@ -2115,7 +2127,7 @@ document.addEventListener('click',async e=>{
       try{ await API.createAdmin(p); }catch(err){ $('#lerr').textContent= err.code==='auth/email-already-in-use'?'حساب المدير موجود بالفعل. اتأكد من كلمة المرور.':'مشكلة: '+(err.message||err); } break; }
     case 'demoLogin': API.login(d.id); break;
     case 'resetDemo': API.reset&&API.reset(); break;
-    case 'logout': closeSheet(true); await API.logout(); break;
+    case 'logout': closeSheet(true); if(TRACKER) await nCall('Tracker','stop',{clear:true}).catch(()=>{}); await API.logout(); break;
     case 'account': openAccount(); break;
     case 'changePw': { const p=$('#npw').value; if(p.length<6){ toast('6 حروف أو أرقام على الأقل'); return; } try{ await API.changePassword(p); toast('اتغيرت كلمة المرور'); closeSheet(); }catch(err){ toast(err.code==='auth/requires-recent-login'?'اخرج وادخل تاني الأول وبعدين غيّرها':'مشكلة: '+(err.message||err),4000); } break; }
     case 'reload': API.clearCache(); renderTab(); break;

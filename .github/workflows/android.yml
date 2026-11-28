@@ -24,7 +24,7 @@ jobs:
       - run: npx cap sync android
       - name: Build
         working-directory: android-app/android
-        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+        run: chmod +x gradlew && set -o pipefail && ./gradlew assembleRelease --no-daemon 2>&1 | tee ../build.log
       - name: Sign
         run: |
           # مفتاح توقيع: من secret اسمه ANDROID_KEYSTORE_B64 لو موجود، وإلا مفتاح مؤقت للبناء ده
@@ -47,3 +47,11 @@ jobs:
           body: نزّل الملف وثبته على موبايل الأندرويد. التطبيق بيفتح نفس لينك «قسم المشاريع» وبيسجل الموقع حتى والتطبيق في الخلفية.
           files: android-app/marble-visits.apk
           make_latest: true
+      - name: سجل البناء لو فشل
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-log
+          name: سجل بناء الأندرويد (للمراجعة)
+          prerelease: true
+          files: android-app/build.log
