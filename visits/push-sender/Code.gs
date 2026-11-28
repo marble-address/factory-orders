@@ -224,3 +224,30 @@ function getUser_(uid) {
   } catch (e) { return null; }
 }
 function genPw_() { var c = 'abcdefghjkmnpqrstuvwxyz23456789', s = ''; for (var i = 0; i < 16; i++) s += c.charAt(Math.floor(Math.random() * c.length)); return s; }
+
+/* ===== جسر مؤقت: مواقع تطبيق الأندرويد القديم (النسخة 2/3) =====
+   الخدمة الأصلية في النسخ القديمة بتكتب نقط الموقع في Firestore (track) — كل 5 دقايق بننسخ نقط النهارده لـ Supabase
+   (النسخة 4 بتكتب في Supabase على طول، ولما الكل ينزّلها نقدر نوقف المشغّل ده) */
+function syncTrack() {
+  var day = Utilities.formatDate(new Date(), 'Asia/Riyadh', 'yyyy-MM-dd'), n = 0;
+  var q = api_('post', FS + ':runQuery', { structuredQuery: { from: [{ collectionId: 'track' }],
+    where: { fieldFilter: { field: { fieldPath: 'day' }, op: 'EQUAL', value: { stringValue: day } } }, limit: 100 } });
+  (q || []).forEach(function (r) {
+    if (!r.document) return;
+    var f = r.document.fields || {}, id = r.document.name.split('/').pop();
+    var pts = ((f.points && f.points.arrayValue && f.points.arrayValue.values) || []).map(function (v) {
+      var m = (v.mapValue && v.mapValue.fields) || {};
+      return { t: Number(val_(m.t)), lat: Number(m.lat && (m.lat.doubleValue != null ? m.lat.doubleValue : m.lat.integerValue)),
+        lng: Number(m.lng && (m.lng.doubleValue != null ? m.lng.doubleValue : m.lng.integerValue)), acc: Number(val_(m.acc) || 0), k: val_(m.k) || 'p' };
+    }).filter(function (p) { return p.t && isFinite(p.lat) && isFinite(p.lng); });
+    if (!pts.length) return;
+    n += sb_('srv_track_merge', { p_id: id, p_data: { uid: val_(f.uid), name: val_(f.name), day: val_(f.day), section: val_(f.section) || 'rp', points: pts } }) || 0;
+  });
+  return 'نقط جديدة: ' + n;
+}
+/* شغّلها مرة واحدة: مشغّل الجسر كل 5 دقايق */
+function setupSyncTrack() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'syncTrack') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('syncTrack').timeBased().everyMinutes(5).create();
+  return syncTrack();
+}
